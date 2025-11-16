@@ -2,8 +2,7 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm"
+	// "gorm.io/gorm"
 )
 
 // User представляет пользователя системы
@@ -29,9 +28,9 @@ type User struct {
 
 // LinkToken представляет токен для ссылок/авторизации
 type LinkToken struct {
-	Token             string    `gorm:"primaryKey;column:token;type:varchar(255)"`
-	UserID            uint      `gorm:"column:user_id;not null;index"`
-	CreationDatetime  time.Time `gorm:"column:creation_datetime;autoCreateTime"`
+	Token              string    `gorm:"primaryKey;column:token;type:varchar(255)"`
+	UserID             uint      `gorm:"column:user_id;not null;index"`
+	CreationDatetime   time.Time `gorm:"column:creation_datetime;autoCreateTime"`
 	ExpirationDatetime time.Time `gorm:"column:expiration_datetime;not null"`
 
 	// Связи

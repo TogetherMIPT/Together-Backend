@@ -46,7 +46,7 @@ func GetDefaultConfig() Config {
 		Port:     getEnv("DB_PORT", "5432"),
 		User:     getEnv("DB_USER", "postgres"),
 		Password: getEnv("DB_PASSWORD", "postgres"),
-		DBName:   getEnv("DB_NAME", "myapp"),
+		DBName:   getEnv("DB_NAME", "mydatabase"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
 }

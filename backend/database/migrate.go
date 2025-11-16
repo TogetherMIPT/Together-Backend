@@ -2,82 +2,177 @@ package database
 
 import (
 	"log"
-	"myapp/models"
 
 	"gorm.io/gorm"
 )
 
-// Migrate выполняет автоматическую миграцию всех моделей
+// Migrate выполняет миграцию базы данных в правильном порядке
 func Migrate(db *gorm.DB) error {
 	log.Println("Starting database migration...")
 
-	// Автомиграция создает таблицы, добавляет недостающие колонки и индексы
-	// Но НЕ удаляет неиспользуемые колонки для защиты данных
-	err := db.AutoMigrate(
-		&models.User{},
-		&models.LinkToken{},
-		&models.Chat{},
-		&models.Message{},
-		&models.Relation{},
-	)
-
-	if err != nil {
+	// Сначала создаем таблицы без внешних ключей
+	if err := createTablesWithoutFKs(db); err != nil {
 		return err
 	}
 
-	// Создание дополнительных индексов и ограничений при необходимости
-	if err := createAdditionalConstraints(db); err != nil {
+	// Затем добавляем внешние ключи
+	if err := addForeignKeys(db); err != nil {
 		return err
 	}
 
 	log.Println("Database migration completed successfully")
+
+	// Создание дополнительных индексов после успешной миграции
+	if err := createAdditionalConstraints(db); err != nil {
+		log.Printf("Warning: Could not create additional constraints: %v", err)
+	}
+
+	return nil
+}
+
+// createTablesWithoutFKs создает таблицы без внешних ключей
+func createTablesWithoutFKs(db *gorm.DB) error {
+	// Временно отключаем AutoMigrate для создания таблиц без FK
+	// Создаем таблицы через Raw SQL в правильном порядке
+
+	tables := []string{
+		`CREATE TABLE IF NOT EXISTS users (
+			user_id BIGSERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			email VARCHAR(255) NOT NULL,
+			login VARCHAR(100) UNIQUE NOT NULL,
+			country VARCHAR(100),
+			city VARCHAR(100),
+			birthdate DATE,
+			gender VARCHAR(10),
+			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
+			password VARCHAR(255) NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS link_tokens (
+			token VARCHAR(255) PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
+			expiration_datetime TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS chats (
+			chat_id BIGSERIAL PRIMARY KEY,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
+			user_id BIGINT NOT NULL,
+			is_active BOOLEAN DEFAULT TRUE,
+			chat_name VARCHAR(255)
+		)`,
+		`CREATE TABLE IF NOT EXISTS messages (
+			message_id BIGSERIAL PRIMARY KEY,
+			chat_id BIGINT NOT NULL,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
+			message_text TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS relations (
+			relation_id BIGSERIAL PRIMARY KEY,
+			first_user_id BIGINT NOT NULL,
+			second_user_id BIGINT NOT NULL,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW()
+		)`,
+	}
+
+	for _, tableSQL := range tables {
+		if err := db.Exec(tableSQL).Error; err != nil {
+			log.Printf("Error creating table: %v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// addForeignKeys добавляет внешние ключи после создания всех таблиц
+func addForeignKeys(db *gorm.DB) error {
+	foreignKeys := []string{
+		`ALTER TABLE link_tokens 
+		 ADD CONSTRAINT fk_link_tokens_user 
+		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE chats 
+		 ADD CONSTRAINT fk_chats_user 
+		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE messages 
+		 ADD CONSTRAINT fk_messages_chat 
+		 FOREIGN KEY (chat_id) REFERENCES chats(chat_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE relations 
+		 ADD CONSTRAINT fk_relations_first_user 
+		 FOREIGN KEY (first_user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE relations 
+		 ADD CONSTRAINT fk_relations_second_user 
+		 FOREIGN KEY (second_user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+	}
+
+	for _, fkSQL := range foreignKeys {
+		if err := db.Exec(fkSQL).Error; err != nil {
+			log.Printf("Warning: Could not add foreign key (might already exist): %v", err)
+			// Не прерываем выполнение, если FK уже существует
+		}
+	}
+
 	return nil
 }
 
 // createAdditionalConstraints создает дополнительные ограничения и индексы
 func createAdditionalConstraints(db *gorm.DB) error {
-	// Создаем составной уникальный индекс для таблицы relations
-	// чтобы избежать дублирования связей между пользователями
-	if err := db.Exec(`
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_relation 
-		ON relations (
-			LEAST(first_user_id, second_user_id), 
-			GREATEST(first_user_id, second_user_id)
-		)
-	`).Error; err != nil {
-		log.Printf("Warning: Could not create unique index for relations: %v", err)
-		// Не останавливаем миграцию, если этот индекс не создался
+	log.Println("Creating additional constraints and indexes...")
+
+	indexes := []string{
+		// Индекс для поиска по email
+		`CREATE INDEX IF NOT EXISTS idx_user_email ON users (email)`,
+
+		// Индекс для поиска активных чатов
+		`CREATE INDEX IF NOT EXISTS idx_chat_active ON chats (is_active)`,
+
+		// Индекс для link_tokens по user_id
+		`CREATE INDEX IF NOT EXISTS idx_link_tokens_user ON link_tokens (user_id)`,
+
+		// Индекс для messages по chat_id
+		`CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages (chat_id)`,
+
+		// Индексы для relations
+		`CREATE INDEX IF NOT EXISTS idx_relations_first_user ON relations (first_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_relations_second_user ON relations (second_user_id)`,
+
+		// Составной уникальный индекс для relations
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_relation 
+		 ON relations (LEAST(first_user_id, second_user_id), GREATEST(first_user_id, second_user_id))`,
 	}
 
-	// Создаем индекс для поиска по email
-	if err := db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_user_email 
-		ON users (email)
-	`).Error; err != nil {
-		log.Printf("Warning: Could not create index for email: %v", err)
+	for _, indexSQL := range indexes {
+		if err := db.Exec(indexSQL).Error; err != nil {
+			log.Printf("Warning: Could not create index: %v", err)
+		}
 	}
 
-	// Создаем индекс для поиска активных чатов
-	if err := db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_chat_active 
-		ON chats (is_active)
-	`).Error; err != nil {
-		log.Printf("Warning: Could not create index for is_active: %v", err)
-	}
-
+	log.Println("Additional constraints created successfully")
 	return nil
 }
 
 // DropTables удаляет все таблицы (используется для тестирования)
 func DropTables(db *gorm.DB) error {
 	log.Println("Dropping all tables...")
-	
+
 	// Удаляем таблицы в обратном порядке зависимостей
-	return db.Migrator().DropTable(
-		&models.Message{},
-		&models.Relation{},
-		&models.Chat{},
-		&models.LinkToken{},
-		&models.User{},
-	)
+	tables := []string{
+		"messages",
+		"relations",
+		"chats",
+		"link_tokens",
+		"users",
+	}
+
+	for _, table := range tables {
+		if err := db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE").Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

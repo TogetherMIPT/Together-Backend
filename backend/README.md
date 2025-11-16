@@ -57,7 +57,7 @@
 
 ```bash
 git clone <your-repo-url>
-cd myapp
+cd backend
 ```
 
 ### 3. Установка зависимостей
