@@ -15,7 +15,7 @@ def get_hf_token():
     
     return token
 
-def load_model_and_tokenizer(model_name):
+def load_model_and_tokenizer_from_hf(model_name):
     try:
         hf_token = get_hf_token()
         
@@ -59,7 +59,7 @@ def calculate_perplexity(model, tokenizer, text_data, max_length=1024):
     return perplexity
 
 
-def load_dataset(dataset_name, split="testv2", text_column="text"):
+def load_dataset_from_hf(dataset_name, split="testv2", text_column="text"):
     try:
         hf_token = get_hf_token()
 
@@ -100,8 +100,8 @@ if __name__ == "__main__":
     dataset_name = "nikrog/psychology_30_v1"
     model_name = "nikrog/rugpt3small_finetuned_psychology_v2"
     # Загрузка данных и модели
-    text_data = load_dataset(dataset_name)
-    model, tokenizer = load_model_and_tokenizer(model_name)
+    text_data = load_dataset_from_hf(dataset_name)
+    model, tokenizer = load_model_and_tokenizer_from_hf(model_name)
     
     # Вычисление перплексии
     perplexity = calculate_perplexity(model, tokenizer, text_data)
