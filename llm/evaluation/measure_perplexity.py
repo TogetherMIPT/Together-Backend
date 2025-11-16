@@ -24,12 +24,12 @@ def load_model_and_tokenizer(model_name):
 
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            token=hf_token,
+            use_auth_token=hf_token,
             trust_remote_code=True
         )
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
-            token=hf_token,
+            use_auth_token=hf_token,
             trust_remote_code=True
         )
         
@@ -65,7 +65,7 @@ def load_dataset(dataset_name, split="testv2", text_column="text"):
     try:
         hf_token = get_hf_token()
         
-        dataset = load_dataset(dataset_name, token=hf_token)
+        dataset = load_dataset(dataset_name, use_auth_token=hf_token)
         
         available_splits = list(dataset.keys())
         print(f"Available files: {available_splits}")
