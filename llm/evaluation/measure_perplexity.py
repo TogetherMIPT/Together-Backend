@@ -24,12 +24,10 @@ def load_model_and_tokenizer(model_name):
 
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            use_auth_token=hf_token,
             trust_remote_code=True
         )
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
-            use_auth_token=hf_token,
             trust_remote_code=True
         )
         
@@ -64,8 +62,11 @@ def calculate_perplexity(model, tokenizer, text_data, max_length=1024):
 def load_dataset(dataset_name, split="testv2", text_column="text"):
     try:
         hf_token = get_hf_token()
+
+        login(token=hf_token)
+        print("Success authentification in Huggingface Hub")
         
-        dataset = load_dataset(dataset_name, use_auth_token=hf_token)
+        dataset = load_dataset(dataset_name)
         
         available_splits = list(dataset.keys())
         print(f"Available files: {available_splits}")
