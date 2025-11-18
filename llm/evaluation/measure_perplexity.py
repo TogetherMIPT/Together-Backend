@@ -3,6 +3,7 @@ import os
 import sys
 import json
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from datasets import load_dataset
 import numpy as np
 from pathlib import Path
 from huggingface_hub import login
@@ -24,11 +25,13 @@ def load_model_and_tokenizer_from_hf(model_name):
 
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            trust_remote_code=True
+            trust_remote_code=True,
+            token=hf_token
         )
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
-            trust_remote_code=True
+            trust_remote_code=True,
+            token=hf_token
         )
         
         if tokenizer.pad_token is None:
@@ -66,7 +69,7 @@ def load_dataset_from_hf(dataset_name, split="testv2", text_column="text"):
         login(token=hf_token)
         print("Success authentification in Huggingface Hub")
         
-        dataset = load_dataset(dataset_name)
+        dataset = load_dataset(dataset_name, token=hf_token)
         
         available_splits = list(dataset.keys())
         print(f"Available files: {available_splits}")
@@ -116,7 +119,7 @@ if __name__ == "__main__":
             'Dataset': dataset_name,
             'File': "testv2",
             'perplexity': float(perplexity),
-            'Test samples': {len(text_data)},
+            'Test samples': len(text_data),
             'timestamp': np.datetime64('now').astype(str)
         }
         
