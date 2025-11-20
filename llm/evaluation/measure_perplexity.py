@@ -62,14 +62,22 @@ def calculate_perplexity(model, tokenizer, text_data, max_length=1024):
     return perplexity
 
 
-def load_dataset_from_hf(dataset_name, split="testv2", text_column="text"):
+def load_dataset_from_hf(dataset_name, split="test", text_column="text"):
     try:
         hf_token = get_hf_token()
 
         login(token=hf_token)
         print("Success authentification in Huggingface Hub")
+
+        data_files = {
+            "train": "trainv2.txt", 
+            "test": "testv2.txt",
+            "val": "valv2.txt"
+        }
         
-        dataset = load_dataset(dataset_name, token=hf_token)
+        dataset = load_dataset(dataset_name, data_files=data_files, token=hf_token)
+        
+        #dataset = load_dataset(dataset_name, token=hf_token)
         
         available_splits = list(dataset.keys())
         print(f"Available files: {available_splits}")
