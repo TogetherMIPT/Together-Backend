@@ -20,6 +20,9 @@ func main() {
 	}
 	defer database.Close()
 
+	// Автомиграция???
+	//db.AutoMigrate(&models.User{}, &models.LinkToken{}, &models.Chat{}, &models.Message{}, &models.Relation{})
+
 	// Выполняем миграции
 	if err := database.Migrate(database.DB); err != nil {
 		log.Fatal("Failed to migrate database:", err)
@@ -96,7 +99,7 @@ func main() {
 	if err := database.DB.Preload("Chats").Preload("LinkTokens").First(&foundUser, user.UserID).Error; err != nil {
 		log.Printf("Error finding user: %v", err)
 	} else {
-		log.Printf("Found user: %s with %d chats and %d tokens", 
+		log.Printf("Found user: %s with %d chats and %d tokens",
 			foundUser.Name, len(foundUser.Chats), len(foundUser.LinkTokens))
 	}
 }
