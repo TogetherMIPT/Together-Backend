@@ -65,7 +65,7 @@ func createTablesWithoutFKs(db *gorm.DB) error {
 			message_id BIGSERIAL PRIMARY KEY,
 			chat_id BIGINT NOT NULL,
 			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
-			message_text TEXT
+			message_text TEXT,
 			is_from_user BOOLEAN NOT NULL DEFAULT TRUE
 		)`,
 		`CREATE TABLE IF NOT EXISTS relations (
