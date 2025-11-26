@@ -42,7 +42,7 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 		}
 
 		// Проверяем существование пользователя и чата
-		user, chat, err := utils.ValidateUserAndChat(db, username, req.ChatID)
+		_, chat, err := utils.ValidateUserAndChat(db, username, req.ChatID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
