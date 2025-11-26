@@ -36,6 +36,20 @@ func main() {
 	// Эндпоинт для сообщений (если нужен)
 	mux.HandleFunc("/message", handlers.MessageHandler(database.DB))
 
+	// Эндпоинты для чатов
+	mux.HandleFunc("/msg_batch/", handlers.GetMessageBatchHandler(database.DB))
+	mux.HandleFunc("/chats/", handlers.GetChatsHandler(database.DB))
+	mux.HandleFunc("/chat/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			handlers.CreateChatHandler(database.DB)(w, r)
+		case http.MethodDelete:
+			handlers.DeleteChatHandler(database.DB)(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// Получаем порт из переменной окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -46,10 +60,14 @@ func main() {
 	addr := ":" + port
 	log.Printf("Starting HTTP server on %s", addr)
 	log.Printf("Available endpoints:")
-	log.Printf("  POST   /register      - Register new user")
-	log.Printf("  PUT    /profile       - Update user profile (requires X-USER-NAME header)")
-	log.Printf("  GET    /profile/{id}  - Get user profile by ID")
-	log.Printf("  POST   /message       - Send message to chat")
+	log.Printf("  POST   /register            - Register new user")
+	log.Printf("  PUT    /profile             - Update user profile (requires X-USER-NAME header)")
+	log.Printf("  GET    /profile/{id}        - Get user profile by ID")
+	log.Printf("  POST   /message             - Send message to chat")
+	log.Printf("  GET    /msg_batch/{chatId}  - Get message batch by chat ID (params: limit, offset)")
+	log.Printf("  GET    /chats/{userId}      - Get all chats by user ID")
+	log.Printf("  POST   /chat/{userId}       - Create new chat for user")
+	log.Printf("  DELETE /chat/{chatId}       - Delete chat by chat ID")
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal("Failed to start server:", err)
