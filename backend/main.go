@@ -50,6 +50,11 @@ func main() {
 		}
 	})
 
+	// Эндпоинты для связей пользователей
+	mux.HandleFunc("/link_token", handlers.GenerateLinkTokenHandler(database.DB))
+	mux.HandleFunc("/link", handlers.LinkUsersHandler(database.DB))
+	mux.HandleFunc("/link/", handlers.DeleteLinkHandler(database.DB))
+
 	// Получаем порт из переменной окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -68,6 +73,9 @@ func main() {
 	log.Printf("  GET    /chats/{userId}      - Get all chats by user ID")
 	log.Printf("  POST   /chat/{userId}       - Create new chat for user")
 	log.Printf("  DELETE /chat/{chatId}       - Delete chat by chat ID")
+	log.Printf("  GET    /link_token          - Generate link token for user linking (requires X-USER-NAME header)")
+	log.Printf("  POST   /link                - Link users using token (requires X-USER-NAME header)")
+	log.Printf("  DELETE /link/{userId}       - Delete link between users (requires X-USER-NAME header)")
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal("Failed to start server:", err)
