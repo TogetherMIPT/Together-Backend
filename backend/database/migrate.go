@@ -74,6 +74,12 @@ func createTablesWithoutFKs(db *gorm.DB) error {
 			second_user_id BIGINT NOT NULL,
 			creation_datetime TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			token VARCHAR(255) PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
+			expiration_datetime TIMESTAMPTZ NOT NULL
+		)`,
 	}
 
 	for _, tableSQL := range tables {
@@ -105,9 +111,13 @@ func addForeignKeys(db *gorm.DB) error {
 		 ADD CONSTRAINT fk_relations_first_user 
 		 FOREIGN KEY (first_user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
 
-		`ALTER TABLE relations 
-		 ADD CONSTRAINT fk_relations_second_user 
+		`ALTER TABLE relations
+		 ADD CONSTRAINT fk_relations_second_user
 		 FOREIGN KEY (second_user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE sessions
+		 ADD CONSTRAINT fk_sessions_user
+		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
 	}
 
 	for _, fkSQL := range foreignKeys {
@@ -142,8 +152,14 @@ func createAdditionalConstraints(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_relations_second_user ON relations (second_user_id)`,
 
 		// Составной уникальный индекс для relations
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_relation 
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_relation
 		 ON relations (LEAST(first_user_id, second_user_id), GREATEST(first_user_id, second_user_id))`,
+
+		// Индекс для sessions по user_id
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id)`,
+
+		// Индекс для поиска по expiration_datetime (для очистки просроченных сессий)
+		`CREATE INDEX IF NOT EXISTS idx_sessions_expiration ON sessions (expiration_datetime)`,
 	}
 
 	for _, indexSQL := range indexes {
@@ -164,6 +180,7 @@ func DropTables(db *gorm.DB) error {
 	tables := []string{
 		"messages",
 		"relations",
+		"sessions",
 		"chats",
 		"link_tokens",
 		"users",

@@ -21,6 +21,7 @@ type User struct {
 	// Связи
 	LinkTokens []LinkToken `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Chats      []Chat      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Sessions   []Session   `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	// Для связей в таблице Relation
 	FirstUserRelations  []Relation `gorm:"foreignKey:FirstUserID;constraint:OnDelete:CASCADE"`
 	SecondUserRelations []Relation `gorm:"foreignKey:SecondUserID;constraint:OnDelete:CASCADE"`
@@ -74,6 +75,17 @@ type Relation struct {
 	SecondUser User `gorm:"foreignKey:SecondUserID;references:UserID;constraint:OnDelete:CASCADE"`
 }
 
+// Session представляет сессию аутентификации пользователя
+type Session struct {
+	Token              string    `gorm:"primaryKey;column:token;type:varchar(255)"`
+	UserID             uint      `gorm:"column:user_id;not null;index"`
+	CreationDatetime   time.Time `gorm:"column:creation_datetime;autoCreateTime"`
+	ExpirationDatetime time.Time `gorm:"column:expiration_datetime;not null"`
+
+	// Связи
+	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
+}
+
 // TableName методы для явного указания имен таблиц
 func (User) TableName() string {
 	return "users"
@@ -93,4 +105,8 @@ func (Message) TableName() string {
 
 func (Relation) TableName() string {
 	return "relations"
+}
+
+func (Session) TableName() string {
+	return "sessions"
 }
