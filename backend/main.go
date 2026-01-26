@@ -4,6 +4,7 @@ import (
 	"log"
 	"myapp/database"
 	"myapp/handlers"
+	"myapp/middleware"
 	"net/http"
 	"os"
 )
@@ -28,18 +29,30 @@ func main() {
 	// Настраиваем роутинг
 	mux := http.NewServeMux()
 
-	// Пользовательские эндпоинты
-	mux.HandleFunc("/register", handlers.RegisterHandler(database.DB))
-	mux.HandleFunc("/profile", handlers.UpdateProfileHandler(database.DB))
-	mux.HandleFunc("/profile/", handlers.GetProfileHandler(database.DB))
+	// Создаем middleware для аутентификации
+	authMiddleware := middleware.AuthMiddleware(database.DB)
 
-	// Эндпоинт для сообщений (если нужен)
-	mux.HandleFunc("/message", handlers.MessageHandler(database.DB))
+	// Вспомогательная функция для применения middleware
+	withAuth := func(handler http.HandlerFunc) http.Handler {
+		return authMiddleware(http.HandlerFunc(handler))
+	}
+
+	// Публичные эндпоинты (без аутентификации)
+	mux.HandleFunc("/register", handlers.RegisterHandler(database.DB))
+	mux.HandleFunc("/login", handlers.LoginHandler(database.DB))
+	mux.HandleFunc("/logout", handlers.LogoutHandler(database.DB))
+
+	// Защищённые эндпоинты (требуют аутентификации)
+	mux.Handle("/profile", withAuth(handlers.UpdateProfileHandler(database.DB)))
+	mux.Handle("/profile/", withAuth(handlers.GetProfileHandler(database.DB)))
+
+	// Эндпоинт для сообщений
+	mux.Handle("/message", withAuth(handlers.MessageHandler(database.DB)))
 
 	// Эндпоинты для чатов
-	mux.HandleFunc("/msg_batch/", handlers.GetMessageBatchHandler(database.DB))
-	mux.HandleFunc("/chats/", handlers.GetChatsHandler(database.DB))
-	mux.HandleFunc("/chat/", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/msg_batch/", withAuth(handlers.GetMessageBatchHandler(database.DB)))
+	mux.Handle("/chats/", withAuth(handlers.GetChatsHandler(database.DB)))
+	mux.Handle("/chat/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			handlers.CreateChatHandler(database.DB)(w, r)
@@ -48,12 +61,12 @@ func main() {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	})))
 
 	// Эндпоинты для связей пользователей
-	mux.HandleFunc("/link_token", handlers.GenerateLinkTokenHandler(database.DB))
-	mux.HandleFunc("/link", handlers.LinkUsersHandler(database.DB))
-	mux.HandleFunc("/link/", handlers.DeleteLinkHandler(database.DB))
+	mux.Handle("/link_token", withAuth(handlers.GenerateLinkTokenHandler(database.DB)))
+	mux.Handle("/link", withAuth(handlers.LinkUsersHandler(database.DB)))
+	mux.Handle("/link/", withAuth(handlers.DeleteLinkHandler(database.DB)))
 
 	// Получаем порт из переменной окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
@@ -65,17 +78,21 @@ func main() {
 	addr := ":" + port
 	log.Printf("Starting HTTP server on %s", addr)
 	log.Printf("Available endpoints:")
-	log.Printf("  POST   /register            - Register new user")
-	log.Printf("  PUT    /profile             - Update user profile (requires X-USER-NAME header)")
-	log.Printf("  GET    /profile/{id}        - Get user profile by ID")
-	log.Printf("  POST   /message             - Send message to chat")
-	log.Printf("  GET    /msg_batch/{chatId}  - Get message batch by chat ID (params: limit, offset)")
-	log.Printf("  GET    /chats/{userId}      - Get all chats by user ID")
-	log.Printf("  POST   /chat/{userId}       - Create new chat for user")
-	log.Printf("  DELETE /chat/{chatId}       - Delete chat by chat ID")
-	log.Printf("  GET    /link_token          - Generate link token for user linking (requires X-USER-NAME header)")
-	log.Printf("  POST   /link                - Link users using token (requires X-USER-NAME header)")
-	log.Printf("  DELETE /link/{userId}       - Delete link between users (requires X-USER-NAME header)")
+	log.Printf("  PUBLIC (no auth required):")
+	log.Printf("    POST   /register            - Register new user")
+	log.Printf("    POST   /login               - Login and get session token")
+	log.Printf("    POST   /logout              - Logout and invalidate session")
+	log.Printf("  PROTECTED (requires Authorization header with session token):")
+	log.Printf("    PUT    /profile             - Update user profile")
+	log.Printf("    GET    /profile/{id}        - Get user profile by ID")
+	log.Printf("    POST   /message             - Send message to chat")
+	log.Printf("    GET    /msg_batch/{chatId}  - Get message batch by chat ID (params: limit, offset)")
+	log.Printf("    GET    /chats/{userId}      - Get all chats by user ID")
+	log.Printf("    POST   /chat/{userId}       - Create new chat for user")
+	log.Printf("    DELETE /chat/{chatId}       - Delete chat by chat ID")
+	log.Printf("    GET    /link_token          - Generate link token for user linking")
+	log.Printf("    POST   /link                - Link users using token")
+	log.Printf("    DELETE /link/{userId}       - Delete link between users")
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal("Failed to start server:", err)
