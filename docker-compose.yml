@@ -1,0 +1,95 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-mydatabase}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # LLM Service (RUGPT3 Psychology Model)
+  llm:
+    build:
+      context: ./llm
+      dockerfile: Dockerfile
+    container_name: llm_service
+    restart: unless-stopped
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      MODEL_NAME: ${MODEL_NAME:-nikrog/rugpt3small_finetuned_psychology_v2}
+      PORT: ${LLM_PORT:-8000}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
+    ports:
+      - "${LLM_PORT:-8000}:8000"
+    volumes:
+      - llm-cache:/root/.cache/huggingface
+    networks:
+      - app_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+      # Если нет GPU — закомментируйте секцию выше и раскомментируйте:
+      # runtime: nvidia  # ← только если установлен NVIDIA Container Toolkit
+
+  # Go Backend Application
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: go_backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DB_HOST: db
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-mydatabase}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      # LLM Service
+      LLM_HOST: llm
+      LLM_PORT: ${LLM_PORT:-8000}
+      # Application
+      PORT: ${APP_PORT:-8080}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      llm:
+        condition: service_started
+    networks:
+      - app_network
+    volumes:
+      - ./backend/config:/app/config:ro
+
+volumes:
+  db-data:
+  llm-cache:
+
+networks:
+  app_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
