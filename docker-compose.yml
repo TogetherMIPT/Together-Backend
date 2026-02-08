@@ -5,11 +5,11 @@ services:
     container_name: postgres_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-mydatabase}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_PORT}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./postgres:/docker-entrypoint-initdb.d:ro
@@ -24,6 +24,7 @@ services:
 
   # LLM Service (RUGPT3 Psychology Model)
   llm:
+    image: arperinn/together-llm:latest
     build:
       context: ./llm
       dockerfile: Dockerfile
@@ -31,11 +32,11 @@ services:
     restart: unless-stopped
     environment:
       HF_TOKEN: ${HF_TOKEN}
-      MODEL_NAME: ${MODEL_NAME:-nikrog/rugpt3small_finetuned_psychology_v2}
-      PORT: ${LLM_PORT:-8000}
+      MODEL_NAME: ${MODEL_NAME}
+      PORT: ${LLM_PORT}
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
     ports:
-      - "${LLM_PORT:-8000}:8000"
+      - "${LLM_PORT}:8000"
     volumes:
       - llm-cache:/root/.cache/huggingface
     networks:
@@ -52,6 +53,7 @@ services:
 
   # Go Backend Application
   backend:
+    image: arperinn/together-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -60,19 +62,19 @@ services:
     environment:
       # Database
       DB_HOST: db
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_NAME: ${DB_NAME:-mydatabase}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       # LLM Service
       LLM_HOST: llm
-      LLM_PORT: ${LLM_PORT:-8000}
+      LLM_PORT: ${LLM_PORT}
       # Application
-      PORT: ${APP_PORT:-8080}
+      PORT: ${APP_PORT}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${APP_PORT}:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -89,7 +91,10 @@ volumes:
 
 networks:
   app_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.25.0.0/16
+
+# networks:
+#   app_network:
+#     driver: bridge
+#     ipam:
+#       config:
+#         - subnet: 172.25.0.0/16

@@ -4,3 +4,6 @@ numpy==2.2.6
 huggingface-hub==0.36.0
 accelerate==1.11.0
 datasets==4.4.1
+fastapi==0.115.12
+uvicorn==0.34.2
+protobuf==6.33.4

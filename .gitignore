@@ -36,3 +36,4 @@ go.work.sum
 /llm/models/
 /llm/data/
 /together_llm_venv
+llm/__pycache__/model_loader.cpython-310.pyc

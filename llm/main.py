@@ -29,13 +29,13 @@ class GenerateResponse(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    print("🧠 Загрузка модели при старте сервиса...")
+    print("Загрузка модели при старте сервиса...")
     start = time.time()
     model = get_model()
     elapsed = (time.time() - start) * 1000
-    print(f"✅ Модель загружена за {elapsed:.0f} мс")
-    print(f"📦 Модель: {model.model_name}")
-    print(f"⚙️ Устройство: {model.device}")
+    print(f"Модель загружена за {elapsed:.0f} мс")
+    print(f"Модель: {model.model_name}")
+    print(f"Устройство: {model.device}")
 
 @app.get("/health")
 async def health_check():
