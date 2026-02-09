@@ -29,7 +29,7 @@ jobs:
     - name: Setup Postgres DB
       run: |
         cd backend
-        docker compose up -d postgres
+        docker compose up -d db
       env:
         DB_USER: ${{ vars.DB_USER }}
         DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -62,4 +62,5 @@ jobs:
     - name: Publish images to Docker Hub
       timeout-minutes: 15
       run: |
+        cd backend
         docker push arperinn/together-backend:latest
