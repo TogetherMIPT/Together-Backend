@@ -22,7 +22,7 @@ jobs:
 
     - name: Build images
       timeout-minutes: 10
-      run: docker compose build
+      run: docker compose build --no-cache --progress=plain
 
     - name: Setup Postgres DB
       run: |
