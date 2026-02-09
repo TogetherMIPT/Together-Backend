@@ -11,53 +11,53 @@ on:
   workflow_dispatch:
 
 jobs:
-  evaluate-perplexity:
+  backend_deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-      - uses: docker/setup-buildx-action@v2
+    - uses: docker/setup-buildx-action@v2
 
-      - name: Build images
-        timeout-minutes: 10
-        run: docker compose build
+    - name: Build images
+      timeout-minutes: 10
+      run: docker compose build
 
-      - name: Setup Postgres DB
-        run: |
-          docker compose up -d postgres
-        env:
-          DB_USER: ${{ variables.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_NAME: ${{ variables.DB_NAME }}
-          DB_PORT: ${{ variables.DB_PORT }}
+    - name: Setup Postgres DB
+      run: |
+        docker compose up -d postgres
+      env:
+        DB_USER: ${{ vars.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_NAME: ${{ vars.DB_NAME }}
+        DB_PORT: ${{ vars.DB_PORT }}
 
-      - name: Run containers
-        timeout-minutes: 10
-        run: |
-          docker compose up -d llm
-          docker compose up -d backend
-        env:
-          DB_USER: ${{ variables.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_NAME: ${{ variables.DB_NAME }}
-          DB_PORT: ${{ variables.DB_PORT }}
-          DB_SSLMODE: ${{ variables.DB_SSLMODE }}
-          LLM_PORT: ${{ variables.LLM_PORT }}
-          APP_PORT: ${{ variables.APP_PORT }}
-          LOG_LEVEL: ${{ variables.LOG_LEVEL }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          MODEL_NAME: ${{ variables.MODEL_NAME }}
+    - name: Run containers
+      timeout-minutes: 10
+      run: |
+        docker compose up -d llm
+        docker compose up -d backend
+      env:
+        DB_USER: ${{ vars.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_NAME: ${{ vars.DB_NAME }}
+        DB_PORT: ${{ vars.DB_PORT }}
+        DB_SSLMODE: ${{ vars.DB_SSLMODE }}
+        LLM_PORT: ${{ vars.LLM_PORT }}
+        APP_PORT: ${{ vars.APP_PORT }}
+        LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        MODEL_NAME: ${{ vars.MODEL_NAME }}
 
-      - name: Login to Docker Hub
+    - name: Login to Docker Hub
       uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKERHUB_USER }}
         password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Publish images to Docker Hub
-        timeout-minutes: 15
-        run: |
-          docker push arperinn/together-backend:latest
-          docker push arperinn/together-llm:latest
+    - name: Publish images to Docker Hub
+      timeout-minutes: 15
+      run: |
+        docker push arperinn/together-backend:latest
+        docker push arperinn/together-llm:latest
