@@ -27,7 +27,7 @@ services:
     image: arperinn/together-llm:latest
     build:
       context: ./llm
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.cpu
     container_name: llm_service
     restart: unless-stopped
     environment:
@@ -41,15 +41,15 @@ services:
       - llm-cache:/root/.cache/huggingface
     networks:
       - app_network
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
       # Если нет GPU — закомментируйте секцию выше и раскомментируйте:
-      # runtime: nvidia  # ← только если установлен NVIDIA Container Toolkit
+      # runtime: nvidia  # только если установлен NVIDIA Container Toolkit
 
   # Go Backend Application
   backend:
