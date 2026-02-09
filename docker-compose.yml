@@ -91,10 +91,3 @@ volumes:
 
 networks:
   app_network:
-
-# networks:
-#   app_network:
-#     driver: bridge
-#     ipam:
-#       config:
-#         - subnet: 172.25.0.0/16

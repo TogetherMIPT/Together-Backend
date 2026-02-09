@@ -22,10 +22,13 @@ jobs:
 
     - name: Build images
       timeout-minutes: 10
-      run: docker compose build --no-cache --progress=plain
+      run: |
+        cd backend
+        docker compose build
 
     - name: Setup Postgres DB
       run: |
+        cd backend
         docker compose up -d postgres
       env:
         DB_USER: ${{ vars.DB_USER }}
@@ -36,7 +39,7 @@ jobs:
     - name: Run containers
       timeout-minutes: 10
       run: |
-        docker compose up -d llm
+        cd backend
         docker compose up -d backend
       env:
         DB_USER: ${{ vars.DB_USER }}
@@ -60,4 +63,3 @@ jobs:
       timeout-minutes: 15
       run: |
         docker push arperinn/together-backend:latest
-        docker push arperinn/together-llm:latest
