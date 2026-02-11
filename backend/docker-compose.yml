@@ -2,7 +2,7 @@ services:
   # PostgreSQL Database
   db:
     image: postgres:15-alpine
-    container_name: postgres_db1
+    container_name: postgres_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
@@ -28,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: go_backend1
+    container_name: go_backend
     restart: unless-stopped
     environment:
       DB_HOST: db
