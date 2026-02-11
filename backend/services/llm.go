@@ -15,8 +15,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// LLMService представляет клиент для работы с LLM API
-type LLMService struct {
+// LLMServiceInterface интерфейс для работы с различными LLM провайдерами
+type LLMServiceInterface interface {
+	GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error)
+	HealthCheck() error
+}
+
+// InternalLLMService представляет клиент для работы с внутренним LLM API
+type InternalLLMService struct {
 	client      *http.Client
 	baseURL     string
 	modelName   string
@@ -39,13 +45,24 @@ type LLMGenerateResponse struct {
 }
 
 // NewLLMService создаёт новый экземпляр сервиса LLM
-func NewLLMService() *LLMService {
+// Возвращает интерфейс для поддержки нескольких провайдеров
+func NewLLMService() LLMServiceInterface {
+	useOpenRouter := os.Getenv("USE_OPENROUTER") == "true"
+	
+	if useOpenRouter {
+		log.Println("Используется OpenRouter API для LLM")
+		return NewOpenRouterService()
+	}
+	
+	log.Println("Используется внутренний LLM сервис")
+	
+	// Создаем внутренний сервис
 	llmHost := getEnv("LLM_HOST", "llm")
 	llmPort := getEnv("LLM_PORT", "8000")
 	
-	return &LLMService{
+	return &InternalLLMService{
 		client: &http.Client{
-			Timeout: 120 * time.Second, // Долгие генерации требуют большего таймаута
+			Timeout: 120 * time.Second,
 		},
 		baseURL:    fmt.Sprintf("http://%s:%s", llmHost, llmPort),
 		modelName:  getEnv("MODEL_NAME", "nikrog/rugpt3small_finetuned_psychology_v2"),
@@ -101,7 +118,7 @@ func GetChatContext(db *gorm.DB, chatID uint, maxTokens int) string {
 }
 
 // GetLLMResponse получает ответ от LLM модели через API
-func (s *LLMService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
+func (s *InternalLLMService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
 	// Применяем опции
 	opts := &LLMOptions{
 		MaxLength:   200,
@@ -138,9 +155,9 @@ func (s *LLMService) GetLLMResponse(context string, userMessage string, options 
 	
 	prompt := basePrompt
 	if context != "" {
-		prompt += "\n=== История диалога ===\n" + context + "\n"
+		prompt += "\nИстория диалога:\n" + context + "\n"
 	}
-	prompt += "\n=== Текущий вопрос ===\nПользователь: " + userMessage + "\nПсихолог:"
+	prompt += "\nТекущий вопрос:\nПользователь: " + userMessage + "\nПсихолог:"
 	
 	// Логируем промпт для отладки
 	// log.Printf("LLM Prompt (%d chars):\n%s", len(prompt), prompt)
@@ -155,7 +172,7 @@ func (s *LLMService) GetLLMResponse(context string, userMessage string, options 
 }
 
 // generate вызывает LLM API для генерации текста
-func (s *LLMService) generate(prompt string, maxLength int, temperature float64) (string, error) {
+func (s *InternalLLMService) generate(prompt string, maxLength int, temperature float64) (string, error) {
 	requestBody := LLMGenerateRequest{
 		Prompt:      prompt,
 		MaxLength:   maxLength,
@@ -229,7 +246,7 @@ func (s *LLMService) generate(prompt string, maxLength int, temperature float64)
 }
 
 // HealthCheck проверяет доступность LLM сервиса
-func (s *LLMService) HealthCheck() error {
+func (s *InternalLLMService) HealthCheck() error {
 	resp, err := s.client.Get(s.baseURL + "/health")
 	if err != nil {
 		return fmt.Errorf("ошибка подключения к LLM сервису: %w", err)
@@ -249,6 +266,238 @@ func (s *LLMService) HealthCheck() error {
 	log.Printf("LLM сервис доступен: %+v", healthResp)
 	return nil
 }
+
+
+// OpenRouterService представляет клиент для работы с OpenRouter API
+type OpenRouterService struct {
+	apiKey    string
+	apiURL    string
+	modelName string
+	client    *http.Client
+}
+
+type OpenRouterRequest struct {
+	Model       string `json:"model"`
+	Messages    []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	} `json:"messages"`
+	MaxTokens   int     `json:"max_tokens,omitempty"`
+	Temperature float64 `json:"temperature,omitempty"`
+	TopP        float64 `json:"top_p,omitempty"`
+}
+
+type OpenRouterResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func NewOpenRouterService() *OpenRouterService {
+	apiKey := os.Getenv("OPENROUTER_API_KEY")
+	if apiKey == "" {
+		log.Fatal("OPENROUTER_API_KEY не установлен")
+	}
+
+	// Бесплатная модель DeepSeek R1
+	modelName := os.Getenv("OPENROUTER_MODEL")
+	if modelName == "" {
+		modelName = "deepseek/deepseek-r1-0528:free"
+		//modelName = "deepseek/deepseek-r1-distill-llama-70b"
+	}
+	
+	return &OpenRouterService{
+		apiKey:    apiKey,
+		apiURL:    "https://openrouter.ai/api/v1/chat/completions",
+		modelName: modelName,
+		client: &http.Client{
+			Timeout: 120 * time.Second,
+		},
+	}
+}
+
+func (s *OpenRouterService) HealthCheck() error {
+	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/models", nil)
+	if err != nil {
+		return err
+	}
+	
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	
+	// Обязательные заголовки для бесплатного использования
+	HTTPReferer := os.Getenv("OPENROUTER_HTTP_REFERER")
+	if HTTPReferer == "" {
+		HTTPReferer = "https://your-app.com"
+	}
+	
+	XTitle := os.Getenv("OPENROUTER_X_TITLE")
+	if XTitle == "" {
+		XTitle = "Psychology Chat App"
+	}
+	
+	req.Header.Set("HTTP-Referer", HTTPReferer)
+	req.Header.Set("X-Title", XTitle)
+	
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("health check failed: %d - %s", resp.StatusCode, string(body))
+	}
+	
+	return nil
+}
+
+func (s *OpenRouterService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
+	// Применяем опции
+	opts := &LLMOptions{
+		MaxLength:   200,
+		Temperature: 0.7,
+	}
+	for _, opt := range options {
+		opt(opts)
+	}
+
+	// Формируем системный промпт для психолога
+	// Для OpenRouter используем формат диалога
+	// Базовый промпт для психологической модели
+	baseSystemPrompt := "Ты — профессиональный психолог, который помогает людям разобраться в их чувствах и проблемах. Отвечай эмпатично, поддерживая и задавая уточняющие вопросы. Не давай медицинских советов, а направляй к специалистам при необходимости."
+	
+	// Собираем сообщения для OpenRouter
+	messages := []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}{
+		//{Role: "system", Content: baseSystemPrompt},
+		{Role: "user", Content: baseSystemPrompt},
+	}
+	
+	// Добавляем контекст из истории диалога
+	// Для формата диалога нужно разбить контекст на отдельные сообщения
+	if context != "" {
+		// Разбиваем контекст на сообщения
+		// Формат контекста: "Пользователь: ...\Психолог: ..."
+		// Для простоты добавим весь контекст как одно сообщение от пользователя
+		// В реальной реализации лучше разбить на отдельные сообщения
+		// но это потребует изменения в `GetChatContext`
+		messages = append(messages, struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}{
+			Role:    "user",
+			Content: "История нашего разговора:\n" + context,
+		})
+	}
+	
+	// Добавляем текущее сообщение пользователя
+	messages = append(messages, struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}{
+		Role:    "user",
+		Content: userMessage,
+	})
+	
+	// Создаем запрос
+	request := OpenRouterRequest{
+		Model:    s.modelName,
+		Messages: messages,
+	}
+	
+	// Применяем опции
+	// OpenRouter использует max_tokens вместо max_length
+	if opts.MaxLength > 0 {
+		request.MaxTokens = opts.MaxLength
+	}
+	if opts.Temperature > 0 {
+		// Ограничиваем температуру в допустимых пределах
+		temperature := opts.Temperature
+		if temperature > 2.0 {
+			temperature = 2.0
+		}
+		if temperature < 0 {
+			temperature = 0
+		}
+		request.Temperature = temperature
+	}
+	
+	// Кодируем запрос
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return "", fmt.Errorf("ошибка маршалинга запроса: %w", err)
+	}
+	
+	// Создаем запрос
+	req, err := http.NewRequest("POST", s.apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания запроса: %w", err)
+	}
+	
+	// Устанавливаем заголовки
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	
+	// Обязательные заголовки для бесплатного использования
+	HTTPReferer := os.Getenv("OPENROUTER_HTTP_REFERER")
+	if HTTPReferer == "" {
+		HTTPReferer = "https://your-app.com"
+	}
+	
+	XTitle := os.Getenv("OPENROUTER_X_TITLE")
+	if XTitle == "" {
+		XTitle = "Psychology Chat App"
+	}
+	
+	req.Header.Set("HTTP-Referer", HTTPReferer)
+	req.Header.Set("X-Title", XTitle)
+	
+	// Отправляем запрос
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ошибка вызова OpenRouter API: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Читаем ответ
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("ошибка чтения ответа: %w", err)
+	}
+	
+	if resp.StatusCode != http.StatusOK {
+		var errorResp OpenRouterResponse
+		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+			return "", fmt.Errorf("OpenRouter API error: %s", errorResp.Error.Message)
+		}
+		return "", fmt.Errorf("OpenRouter API вернул статус %d: %s", resp.StatusCode, string(body))
+	}
+	
+	// Декодируем ответ
+	var response OpenRouterResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("ошибка декодирования ответа: %w. Ответ: %s", err, string(body))
+	}
+	
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("пустой ответ от OpenRouter API")
+	}
+	
+	responseText := strings.TrimSpace(response.Choices[0].Message.Content)
+	
+	log.Printf("OpenRouter ответ получен (модель: %s)", s.modelName)
+	
+	return responseText, nil
+}
+
 
 // Опции для настройки генерации
 type LLMOptions struct {
@@ -280,3 +529,5 @@ func getEnv(key, fallback string) string {
 	}
 	return fallback
 }
+
+

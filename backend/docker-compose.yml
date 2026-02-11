@@ -2,7 +2,7 @@ services:
   # PostgreSQL Database
   db:
     image: postgres:15-alpine
-    container_name: postgres_db
+    container_name: postgres_db1
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
@@ -28,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: go_backend
+    container_name: go_backend1
     restart: unless-stopped
     environment:
       DB_HOST: db
@@ -40,6 +40,11 @@ services:
       # Дополнительные переменные окружения
       PORT: ${APP_PORT}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      USE_OPENROUTER: ${USE_OPENROUTER:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER}
+      OPENROUTER_X_TITLE: ${OPENROUTER_X_TITLE}
     ports:
       - "${APP_PORT}:8080"
     depends_on:

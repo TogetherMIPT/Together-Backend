@@ -118,9 +118,10 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 			log.Printf("Ошибка сохранения ответа: %v", err)
 			// Не возвращаем ошибку клиенту, т.к. сообщение пользователя уже сохранено
 		}
-
+		
 		// Обновляем время последней активности чата (такого поля у нас в БД нет)
 		//db.Model(&chat).Update("last_activity", db.NowFunc())
+		db.Model(&chat).Update("is_active", true)
 
 		// Возвращаем ответ
 		response := MessageResponse{
