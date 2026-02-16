@@ -9,6 +9,7 @@
 *.dylib
 backend/app
 backend/main
+llm/dataset
 
 # Test binary, built with `go test -c`
 *.test

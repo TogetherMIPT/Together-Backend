@@ -22,7 +22,7 @@ def save_to_file(texts, output_dir, filename):
 
 
 if __name__ == '__main__':
-    texts = unite_texts("dataset2/")
+    texts = unite_texts("../dataset/prep_dataset/")
     # Первое разделение: 80% train, 20% временный набор
     train_texts, temp_texts = train_test_split(texts, test_size=0.2, random_state=42)
 
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     print(f"Train: {len(train_texts)}, Val: {len(val_texts)}, Test: {len(test_texts)}, Test+Val: {len(temp_texts)}")
 
-    save_to_file(train_texts,  "split_datasets/", "trainv2.txt")
-    save_to_file(val_texts,  "split_datasets/", "valv2.txt")
-    save_to_file(test_texts,  "split_datasets/", "testv2.txt")
-    save_to_file(temp_texts, "split_datasets/", "testandvalv2.txt")
+    save_to_file(train_texts,  "../dataset/split_datasets/", "trainv3.txt")
+    save_to_file(val_texts,  "../dataset/split_datasets/", "valv3.txt")
+    save_to_file(test_texts,  "../dataset/split_datasets/", "testv3.txt")
+    save_to_file(temp_texts, "../dataset/split_datasets/", "testandvalv3.txt")

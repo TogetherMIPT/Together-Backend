@@ -71,51 +71,210 @@ func NewLLMService() LLMServiceInterface {
 	}
 }
 
-// GetChatContext формирует контекст из истории сообщений
-func GetChatContext(db *gorm.DB, chatID uint, maxTokens int) string {
-	var messages []models.Message
-	db.Where("chat_id = ?", chatID).
-		Order("creation_datetime asc").
-		Limit(100).
-		Find(&messages)
+// // GetChatContext формирует контекст из истории сообщений
+// func GetChatContext(db *gorm.DB, chatID uint, maxTokens int) string {
+// 	var messages []models.Message
+// 	db.Where("chat_id = ?", chatID).
+// 		Order("creation_datetime asc").
+// 		Limit(100).
+// 		Find(&messages)
 
-	var contextBuilder strings.Builder
-	tokenCount := 0
+// 	var contextBuilder strings.Builder
+// 	tokenCount := 0
 
-	for _, msg := range messages {
-		var prefix string
-		if msg.IsFromUser {
-			prefix = "Пользователь: "
-		} else {
-			prefix = "Психолог: "
-		}
+// 	for _, msg := range messages {
+// 		var prefix string
+// 		if msg.IsFromUser {
+// 			prefix = "Пользователь: "
+// 		} else {
+// 			prefix = "Психолог: "
+// 		}
 
-		// Оценка токенов: ~1 токен на 4 символа (для русского текста)
-		// В реальной реализации используйте токенизатор модели
-		messageStr := prefix + msg.MessageText + "\n"
-		messageTokens := len(messageStr) / 4
+// 		// Оценка токенов: ~1 токен на 4 символа (для русского текста)
+// 		// В реальной реализации используйте токенизатор модели
+// 		messageStr := prefix + msg.MessageText + "\n"
+// 		messageTokens := len(messageStr) / 4
 
-		if tokenCount+messageTokens > maxTokens {
-			// Если не помещается текущее сообщение, прекращаем
-			// Можно также обрезать старые сообщения для сохранения контекста
-			remainingTokens := maxTokens - tokenCount
-			if remainingTokens > 0 {
-				// Обрезаем сообщение до оставшихся токенов
-				allowedChars := remainingTokens * 4
-				if len(messageStr) > allowedChars {
-					messageStr = messageStr[:allowedChars] + "..."
-				}
-				contextBuilder.WriteString(messageStr)
-			}
-			break
-		}
+// 		if tokenCount+messageTokens > maxTokens {
+// 			// Если не помещается текущее сообщение, прекращаем
+// 			// Можно также обрезать старые сообщения для сохранения контекста
+// 			remainingTokens := maxTokens - tokenCount
+// 			if remainingTokens > 0 {
+// 				// Обрезаем сообщение до оставшихся токенов
+// 				allowedChars := remainingTokens * 4
+// 				if len(messageStr) > allowedChars {
+// 					messageStr = messageStr[:allowedChars] + "..."
+// 				}
+// 				contextBuilder.WriteString(messageStr)
+// 			}
+// 			break
+// 		}
 
-		contextBuilder.WriteString(messageStr)
-		tokenCount += messageTokens
+// 		contextBuilder.WriteString(messageStr)
+// 		tokenCount += messageTokens
+// 	}
+
+// 	return contextBuilder.String()
+// }
+
+
+// GetChatContext формирует контекст из истории сообщений текущего чата 
+// и активного чата связанного пользователя
+// Если партнера нет - весь контекст отдается текущему чату
+func GetChatContext(db *gorm.DB, chatID uint, maxTokens int, partnerContextPercentage int) string {
+	// 1. Получаем владельца текущего чата
+	var currentChat struct {
+		UserID uint `gorm:"column:user_id"`
+	}
+	if err := db.Table("chats").Where("chat_id = ?", chatID).First(&currentChat).Error; err != nil {
+		return ""
+	}
+	ownerID := currentChat.UserID
+
+	// 2. Находим связанного пользователя (партнера)
+	var partnerID uint
+	var relation struct {
+		FirstUserID  uint `gorm:"column:first_user_id"`
+		SecondUserID uint `gorm:"column:second_user_id"`
 	}
 
-	return contextBuilder.String()
+	err := db.Table("relations").
+		Where("first_user_id = ? OR second_user_id = ?", ownerID, ownerID).
+		First(&relation).Error
+
+	if err == nil {
+		if relation.FirstUserID == ownerID {
+			partnerID = relation.SecondUserID
+		} else {
+			partnerID = relation.FirstUserID
+		}
+	}
+
+	// 3. Получаем активный чат партнера
+	var partnerChatID uint
+	if partnerID > 0 {
+		var partnerChat struct {
+			ChatID uint `gorm:"column:chat_id"`
+		}
+		err = db.Table("chats").
+			Where("user_id = ? AND is_active = ?", partnerID, true).
+			Order("creation_datetime DESC").
+			Limit(1).
+			First(&partnerChat).Error
+
+		if err == nil {
+			partnerChatID = partnerChat.ChatID
+		}
+	}
+
+	// 4. Загружаем сообщения из обоих чатов
+	type ContextMessage struct {
+		Prefix string
+		Text   string
+	}
+
+	// Загрузка сообщений текущего чата
+	var currentMessages []models.Message
+	db.Where("chat_id = ?", chatID).
+		Order("creation_datetime ASC").
+		Find(&currentMessages)
+
+	var currentContext []ContextMessage
+	for _, msg := range currentMessages {
+		prefix := "Психолог: "
+		if msg.IsFromUser {
+			prefix = "Пользователь: "
+		}
+		currentContext = append(currentContext, ContextMessage{
+			Prefix: prefix,
+			Text:   msg.MessageText,
+		})
+	}
+
+	// Загрузка сообщений чата партнера
+	var partnerContext []ContextMessage
+	if partnerChatID > 0 {
+		var partnerMessages []models.Message
+		db.Where("chat_id = ?", partnerChatID).
+			Order("creation_datetime ASC").
+			Find(&partnerMessages)
+
+		for _, msg := range partnerMessages {
+			prefix := "Психолог партнера: "
+			if msg.IsFromUser {
+				prefix = "Партнер (Пользователь): "
+			}
+			partnerContext = append(partnerContext, ContextMessage{
+				Prefix: prefix,
+				Text:   msg.MessageText,
+			})
+		}
+	}
+
+	// 5. Распределение токенов между чатами
+	var currentTokensLimit, partnerTokensLimit int
+
+	// Если у партнера есть активный чат с сообщениями - делим в указанной пропорции 100-partnerContextPercentage/partnerContextPercentage
+	// Иначе - весь контекст доступен текущему чату
+	hasPartnerContext := partnerChatID > 0 && len(partnerContext) > 0
+
+	if hasPartnerContext {
+		currentTokensLimit = maxTokens * (100 - partnerContextPercentage) / 100
+		partnerTokensLimit = maxTokens * partnerContextPercentage / 100
+	} else {
+		currentTokensLimit = maxTokens
+		partnerTokensLimit = 0
+	}
+
+	// Функция для подсчета токенов слайса сообщений
+	calcTokens := func(msgs []ContextMessage) int {
+		count := 0
+		for _, m := range msgs {
+			count += len(m.Prefix + m.Text + "\n") / 4
+		}
+		return count
+	}
+
+	// Функция для обрезки старых сообщений (с начала слайса)
+	trimMessages := func(msgs []ContextMessage, limit int) []ContextMessage {
+		for calcTokens(msgs) > limit && len(msgs) > 0 {
+			msgs = msgs[1:] // Удаляем самое старое сообщение
+		}
+		return msgs
+	}
+
+	// Обрезаем контексты до их лимитов
+	currentContext = trimMessages(currentContext, currentTokensLimit)
+	partnerContext = trimMessages(partnerContext, partnerTokensLimit)
+
+	// 6. Формируем итоговую строку
+	var contextBuilder strings.Builder
+
+	// Сначала контекст партнера (как предыстория/фон)
+	if len(partnerContext) > 0 {
+		contextBuilder.WriteString("Контекст связанного пользователя (партнера):\n")
+		for _, msg := range partnerContext {
+			contextBuilder.WriteString(msg.Prefix + msg.Text + "\n")
+		}
+		contextBuilder.WriteString("\n\n")
+	}
+
+	// Затем текущий диалог
+	if len(currentContext) > 0 {
+		contextBuilder.WriteString("Текущий диалог:\n")
+		for _, msg := range currentContext {
+			contextBuilder.WriteString(msg.Prefix + msg.Text + "\n")
+		}
+		contextBuilder.WriteString("\n")
+	}
+
+	contextStr := contextBuilder.String()
+
+	log.Printf("LLM Context for ChatID %d:\n%s\n=============================\n", chatID, contextStr)
+
+	return contextStr
 }
+
 
 // GetLLMResponse получает ответ от LLM модели через API
 func (s *InternalLLMService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
@@ -387,14 +546,13 @@ func (s *OpenRouterService) GetLLMResponse(context string, userMessage string, o
 		// Разбиваем контекст на сообщения
 		// Формат контекста: "Пользователь: ...\Психолог: ..."
 		// Для простоты добавим весь контекст как одно сообщение от пользователя
-		// В реальной реализации лучше разбить на отдельные сообщения
-		// но это потребует изменения в `GetChatContext`
+		// Вариант улучшения: разбить контекст на отдельные сообщения
 		messages = append(messages, struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		}{
 			Role:    "user",
-			Content: "История нашего разговора:\n" + context,
+			Content: "История диалога:\n" + context,
 		})
 	}
 	

@@ -57,7 +57,7 @@ type Message struct {
 	ChatID           uint      `gorm:"column:chat_id;not null;index"`
 	CreationDatetime time.Time `gorm:"column:creation_datetime;autoCreateTime"`
 	MessageText      string    `gorm:"column:message_text;type:text"`
-	IsFromUser       bool      `gorm:"column:is_from_user;not null;default:true"`
+	IsFromUser       bool      `gorm:"column:is_from_user;not null;default:false"`
 
 	// Связи
 	Chat Chat `gorm:"foreignKey:ChatID;references:ChatID;constraint:OnDelete:CASCADE"`

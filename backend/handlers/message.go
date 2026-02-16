@@ -73,6 +73,8 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		// Получаем контекст чата
+		context := services.GetChatContext(db, req.ChatID, 2000, 30)
 
 		// Сохраняем сообщение пользователя
 		userMessage := models.Message{
@@ -86,9 +88,6 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 			http.Error(w, "Failed to save message", http.StatusInternalServerError)
 			return
 		}
-
-		// Получаем контекст чата
-		context := services.GetChatContext(db, req.ChatID, 2000)
 
 		// Формируем опции для генерации
 		opts := []services.LLMOption{}
@@ -121,7 +120,18 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 		
 		// Обновляем время последней активности чата (такого поля у нас в БД нет)
 		//db.Model(&chat).Update("last_activity", db.NowFunc())
-		db.Model(&chat).Update("is_active", true)
+		if err := db.Model(&chat).Update("is_active", true).Error; err != nil {
+			log.Printf("Ошибка активации чата: %w", err)
+			http.Error(w, "Failed to activate chat", http.StatusInternalServerError)
+			return
+		}
+
+		if err := db.Model(&models.Chat{}).
+		Where("chat_id <> ? AND is_active = ?", req.ChatID, true).Update("is_active", false).Error; err != nil {
+			log.Printf("Ошибка деактивации старых чатов: %w", err)
+			http.Error(w, "Failed to deactivate old chats", http.StatusInternalServerError)
+			return
+		}
 
 		// Возвращаем ответ
 		response := MessageResponse{
