@@ -94,7 +94,8 @@ func main() {
 	log.Printf("    POST   /link                - Link users using token")
 	log.Printf("    DELETE /link/{userId}       - Delete link between users")
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	// Оборачиваем весь роутер в CORS middleware (CORS отключён — разрешены все источники)
+	if err := http.ListenAndServe(addr, middleware.CORSMiddleware(mux)); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
 }
