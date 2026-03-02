@@ -115,9 +115,11 @@ def save_sentences(sentences: List[str], output_dir: str, filename: str):
     with open(filepath, "w", encoding="utf-8") as f:
         for sent in sentences:
             if sent == "<|doc_start|>":
-                f.write("\n\n### НОВЫЙ ДОКУМЕНТ ###\n\n")
+                #f.write("\n\n### НОВЫЙ ДОКУМЕНТ ###\n\n")
+                f.write("")
             else:
-                f.write(sent + "\n\n")
+                #f.write(sent + "\n\n")
+                f.write(sent)
     
     print(f"Сохранено {len([s for s in sentences if s != '<|doc_start|>'])} предложений в {filepath}")
 
@@ -162,4 +164,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    save_to_file(temp_texts, "../dataset/split_datasets/", "testandvalv3.txt")
