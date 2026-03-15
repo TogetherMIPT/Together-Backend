@@ -80,6 +80,14 @@ func createTablesWithoutFKs(db *gorm.DB) error {
 			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
 			expiration_datetime TIMESTAMPTZ NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS daily_surveys (
+			survey_id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			mood_answer SMALLINT NOT NULL,
+			anxiety_answer SMALLINT NOT NULL,
+			control_answer SMALLINT NOT NULL,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW()
+		)`,
 	}
 
 	for _, tableSQL := range tables {
@@ -117,6 +125,10 @@ func addForeignKeys(db *gorm.DB) error {
 
 		`ALTER TABLE sessions
 		 ADD CONSTRAINT fk_sessions_user
+		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE daily_surveys
+		 ADD CONSTRAINT fk_daily_surveys_user
 		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
 	}
 
@@ -160,6 +172,9 @@ func createAdditionalConstraints(db *gorm.DB) error {
 
 		// Индекс для поиска по expiration_datetime (для очистки просроченных сессий)
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expiration ON sessions (expiration_datetime)`,
+
+		// Индекс для daily_surveys по user_id
+		`CREATE INDEX IF NOT EXISTS idx_daily_surveys_user ON daily_surveys (user_id)`,
 	}
 
 	for _, indexSQL := range indexes {
@@ -178,6 +193,7 @@ func DropTables(db *gorm.DB) error {
 
 	// Удаляем таблицы в обратном порядке зависимостей
 	tables := []string{
+		"daily_surveys",
 		"messages",
 		"relations",
 		"sessions",
