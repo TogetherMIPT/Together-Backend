@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     print(f"Train: {len(train_texts)}, Val: {len(val_texts)}, Test: {len(test_texts)}, Test+Val: {len(temp_texts)}")
 
-    save_to_file(train_texts,  "../dataset/split_datasets/", "trainv3.txt")
-    save_to_file(val_texts,  "../dataset/split_datasets/", "valv3.txt")
-    save_to_file(test_texts,  "../dataset/split_datasets/", "testv3.txt")
-    save_to_file(temp_texts, "../dataset/split_datasets/", "testandvalv3.txt")
+    save_to_file(train_texts,  "../dataset/split_datasets/", "train.txt")
+    save_to_file(val_texts,  "../dataset/split_datasets/", "val.txt")
+    save_to_file(test_texts,  "../dataset/split_datasets/", "test.txt")
+    save_to_file(temp_texts, "../dataset/split_datasets/", "testandval.txt")

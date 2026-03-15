@@ -19,7 +19,8 @@ from huggingface_hub import login
 
 # Конфигурация
 MODEL_NAME = "sberbank-ai/rugpt3medium_based_on_gpt2"  # базовая модель для дообучения ruGPT3
-DATASET_NAME = "nikrog/psychology_30_v1"  # датасет
+DATASET_NAME = "nikrog/psychology_dataset_rus"  # датасет
+FINETUNED_MODEL_NAME = "nikrog/rugpt3medium_finetuned_psychology"
 OUTPUT_DIR = "./rugpt3_finetuned"
 
 # Параметры LoRA/QLoRA
@@ -93,15 +94,16 @@ def load_and_preprocess_dataset(tokenizer, max_length=512):
     print("Success authentification in Huggingface Hub")
 
     data_files = {
-        "train": "trainv3.txt", 
-        "test": "testv3.txt",
-        "val": "valv3.txt"
+        "train": "train.txt",
+        "test": "test.txt",
+        "val": "val.txt"
     }
     
     # Загрузка датасета из Hugging Face
     dataset = load_dataset(DATASET_NAME, data_files=data_files, token=hf_token)
     dataset_train = dataset["train"]
     dataset_val = dataset["val"]
+    dataset_test = dataset["test"]
     
     def preprocess_function(examples):
         # Токенизация текста
@@ -115,23 +117,29 @@ def load_and_preprocess_dataset(tokenizer, max_length=512):
         return tokenized
     
     # Применение предобработки
-    processed_train_dataset = dataset.map(
+    processed_train_dataset = dataset_train.map(
         preprocess_function,
         batched=True,
         remove_columns=dataset_train.column_names
     )
 
-    processed_val_dataset = dataset.map(
+    processed_val_dataset = dataset_val.map(
         preprocess_function,
         batched=True,
         remove_columns=dataset_val.column_names
+    )
+
+    processed_test_dataset = dataset_test.map(
+        preprocess_function,
+        batched=True,
+        remove_columns=dataset_test.column_names
     )
     
     # Разделение на train/eval
     #split_dataset = processed_dataset.train_test_split(test_size=0.1)
     #return split_dataset["train"], split_dataset["test"]
 
-    return processed_train_dataset, processed_val_dataset
+    return processed_train_dataset, processed_val_dataset, processed_test_dataset
 
 def train_model(model, tokenizer, train_dataset, eval_dataset):
     """Обучение модели"""
@@ -153,7 +161,7 @@ def train_model(model, tokenizer, train_dataset, eval_dataset):
         fp16=True,
         logging_steps=10,
         save_strategy="epoch",
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         load_best_model_at_end=True,
         report_to="none",
         gradient_checkpointing=True if USE_QLORA else False,
@@ -177,6 +185,23 @@ def train_model(model, tokenizer, train_dataset, eval_dataset):
     
     return trainer
 
+
+def save_model_to_hf(trainer, tokenizer):
+    """Сохранение модели"""
+    # Загрузка на Hugging Face
+    trainer.push_to_hub(
+        repo_id=FINETUNED_MODEL_NAME,
+        private=True,
+        commit_message="Load fine-tuned model on psychology dataset",
+    )
+
+    # Токенизатор тоже нужно загрузить
+    tokenizer.push_to_hub(
+        repo_id=FINETUNED_MODEL_NAME,
+        private=True,
+        commit_message="Load tokenizer for fine-tuned model"
+    )
+
 def main():
     print("Загрузка модели и токенизатора...")
     model, tokenizer = load_model_and_tokenizer()
@@ -185,7 +210,7 @@ def main():
     model = configure_lora(model)
     
     print("Загрузка и предобработка датасета...")
-    train_dataset, eval_dataset = load_and_preprocess_dataset(tokenizer)
+    train_dataset, eval_dataset, test_dataset = load_and_preprocess_dataset(tokenizer)
     
     print("Начало обучения...")
     trainer = train_model(model, tokenizer, train_dataset, eval_dataset)

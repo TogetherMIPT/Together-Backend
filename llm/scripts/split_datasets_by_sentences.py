@@ -107,6 +107,29 @@ def split_by_sentence_count(sentences: List[Tuple[str, int, int]],
     return train, val, test
 
 
+def clean_sentence(sentence: str) -> str:
+    # Удаляем подстроки вида (<число>)
+    sentence = re.sub(r'\s*\(\d+\)\s*', '', sentence)
+    # Удаляем нумерацию (1.1, 1.2.3 и т.д.)
+    sentence = re.sub(r'\s*\d+(\.\d+)+\s*', ' ', sentence)
+    # Удаляем одиночные цифры в начале строки (часто номера страниц)
+    sentence = re.sub(r'^\d+\s*', '', sentence, flags=re.MULTILINE)
+
+    # Удаляем заголовки Этап, Глава, Часть, Раздел
+    sentence = re.sub(r'Этап\s*\d+\.\s*', '', sentence)
+    sentence = re.sub(r'Глава\s*\d+\s*', '', sentence)
+    sentence = re.sub(r'Часть\s*\d+\s*', '', sentence)
+    sentence = re.sub(r'Раздел\s*\d+\s*', '', sentence)
+
+    # Удаляем графические обозначения элементов списка
+    sentence = sentence.replace('•', '')
+    #  Нормализуем пробелы
+    sentence = re.sub(r'\s+', ' ', sentence)
+    # Удаляем лишние пробелы вокруг знаков препинания
+    sentence = re.sub(r'\s+([.,!?;:])', r'\1', sentence)
+    return sentence.strip()
+
+
 def save_sentences(sentences: List[str], output_dir: str, filename: str):
     """Сохраняет предложения в файл с двойным переводом строки между ними"""
     os.makedirs(output_dir, exist_ok=True)
@@ -116,10 +139,10 @@ def save_sentences(sentences: List[str], output_dir: str, filename: str):
         for sent in sentences:
             if sent == "<|doc_start|>":
                 #f.write("\n\n### НОВЫЙ ДОКУМЕНТ ###\n\n")
-                f.write("")
+                f.write("\n")
             else:
                 #f.write(sent + "\n\n")
-                f.write(sent)
+                f.write(clean_sentence(sent) + "\n")
     
     print(f"Сохранено {len([s for s in sentences if s != '<|doc_start|>'])} предложений в {filepath}")
 
@@ -142,12 +165,12 @@ def main():
     )
     
     # 3. Сохранение результатов
-    save_sentences(train_sents, output_dir, "trainv3.txt")
-    save_sentences(val_sents, output_dir, "valv3.txt")
-    save_sentences(test_sents, output_dir, "testv3.txt")
+    save_sentences(train_sents, output_dir, "train.txt")
+    save_sentences(val_sents, output_dir, "val.txt")
+    save_sentences(test_sents, output_dir, "test.txt")
     
     # Опционально: объединённый тест+валидация
-    save_sentences(val_sents + test_sents, output_dir, "testandvalv3.txt")
+    save_sentences(val_sents + test_sents, output_dir, "testandval.txt")
     
     # Статистика
     total_real = len([s for s in sentences if s[2] != -1])
@@ -164,3 +187,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # sent = clean_sentence("Этап 4. (4) Каковы последствия моей 10.5 убежденности в истинности этой автоматической мысли 100?")
+    # print(sent)

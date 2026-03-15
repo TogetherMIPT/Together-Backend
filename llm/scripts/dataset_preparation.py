@@ -95,7 +95,7 @@ def clean_text(text):
     text = re.sub(r'\[[^\]]+\]', '', text)
     # Удаление специальных символов
     text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
-    text = text.replace('♦', '').replace('■', '')
+    text = text.replace('♦', '').replace('■', '').replace('•', '')
     # Удаление cid-кодов (спец. символы из PDF)
     text = re.sub(r'\(cid:\d+\)', '', text)
     # Удаление списка литературы
@@ -138,14 +138,6 @@ def extract_text_from_file(source_path, txt_path, clean_flag=0, pdf_image=0):
                         target_file.write(text)
                         i += 1
             else:
-                # #print("YES")
-                # temp_img_path = "./images/temp.png"
-                # im = page.to_image()  # конвертируем страницу в изображение
-                # im.save(temp_img_path)  # сохраняем временное изображение
-                # image = cv2.imread(temp_img_path)
-                # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                # thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-                # text = pytesseract.image_to_string(thresh, lang="rus")  # распознаём текст
                 images = convert_from_path(source_path, dpi=300)
                 for i, img in enumerate(images):
                     print("page: ", i)
@@ -192,7 +184,6 @@ def make_dataset(source_directory, target_directory, clean_flag=0, pdf_image=0):
     for root, _, files in os.walk(source_directory):
         for filename in files:
             source_path = os.path.join(root, filename)
-            #txt_path = os.path.join(target_directory, filename[:-4] + '_cleaned.txt')
             txt_path = os.path.join(target_directory, filename[:-4] + '.txt')
             print(source_path)
             extract_text_from_file(source_path, txt_path, clean_flag, pdf_image)
@@ -203,4 +194,4 @@ if __name__ == '__main__':
     #                       './txt_files/Karen_Khorni_Zhenskaya_psikhologia_cleaned.txt', 1)
     # extract_text_from_pdf('books/Kniga-Pol-i-gender-Ilin-E.pdf',
     #                        './txt_files/Kniga-Pol-i-gender-Ilin-E_cleaned.txt', 1)
-    make_dataset('./books_test', './dataset2', clean_flag=1, pdf_image=1)
+    make_dataset('../dataset/raw_articles_dataset', '../dataset/prep_dataset', clean_flag=1, pdf_image=1)
