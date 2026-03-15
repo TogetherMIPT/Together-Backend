@@ -86,6 +86,19 @@ type Session struct {
 	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
 }
 
+// DailySurvey представляет ежедневный опрос состояния клиента
+type DailySurvey struct {
+	SurveyID         uint      `gorm:"primaryKey;column:survey_id;autoIncrement"`
+	UserID           uint      `gorm:"column:user_id;not null;index"`
+	MoodAnswer       int       `gorm:"column:mood_answer;not null"`
+	AnxietyAnswer    int       `gorm:"column:anxiety_answer;not null"`
+	ControlAnswer    int       `gorm:"column:control_answer;not null"`
+	CreationDatetime time.Time `gorm:"column:creation_datetime;autoCreateTime"`
+
+	// Связи
+	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
+}
+
 // TableName методы для явного указания имен таблиц
 func (User) TableName() string {
 	return "users"
@@ -109,4 +122,8 @@ func (Relation) TableName() string {
 
 func (Session) TableName() string {
 	return "sessions"
+}
+
+func (DailySurvey) TableName() string {
+	return "daily_surveys"
 }

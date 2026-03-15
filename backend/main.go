@@ -72,6 +72,9 @@ func main() {
 	mux.Handle("/link", withAuth(handlers.LinkUsersHandler(database.DB)))
 	mux.Handle("/link/", withAuth(handlers.DeleteLinkHandler(database.DB)))
 
+	// Эндпоинт для ежедневного опроса состояния
+	mux.Handle("/survey", withAuth(handlers.DailySurveyHandler(database.DB)))
+
 	// Получаем порт из переменной окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -97,6 +100,7 @@ func main() {
 	log.Printf("    GET    /link_token          - Generate link token for user linking")
 	log.Printf("    POST   /link                - Link users using token")
 	log.Printf("    DELETE /link/{userId}       - Delete link between users")
+	log.Printf("    POST   /survey              - Submit daily mood survey")
 
 	// Оборачиваем весь роутер в CORS middleware (CORS отключён — разрешены все источники)
 	if err := http.ListenAndServe(addr, middleware.CORSMiddleware(mux)); err != nil {
