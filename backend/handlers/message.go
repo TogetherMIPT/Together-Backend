@@ -68,11 +68,33 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 		}
 
 		// Проверяем существование пользователя и чата
-		_, chat, err := utils.ValidateUserAndChat(db, username, req.ChatID)
+		user, chat, err := utils.ValidateUserAndChat(db, username, req.ChatID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+
+		// Проверяем доступ к подписке
+		now := time.Now()
+		registeredRecently := now.Sub(user.CreationDatetime) <= 7*24*time.Hour
+		paidRecently := user.LastPaymentDatetime != nil && now.Sub(*user.LastPaymentDatetime) <= 30*24*time.Hour
+		if !registeredRecently && !paidRecently {
+			// Фиксируем дату "оплаты" и сохраняем сообщение об оплате в историю чата
+			paymentMessage := "Оплатите подписку. Можно тут: бусти."
+			db.Model(user).Update("last_payment_datetime", now)
+
+			assistantPaymentMsg := models.Message{
+				ChatID:      req.ChatID,
+				MessageText: paymentMessage,
+				IsFromUser:  false,
+			}
+			db.Create(&assistantPaymentMsg)
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(MessageResponse{Response: paymentMessage})
+			return
+		}
+
 		// Получаем контекст чата
 		context := services.GetChatContext(db, req.ChatID, 2000, 30)
 

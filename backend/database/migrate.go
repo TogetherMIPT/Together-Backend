@@ -22,6 +22,11 @@ func Migrate(db *gorm.DB) error {
 
 	log.Println("Database migration completed successfully")
 
+	// Применяем миграции для добавления новых колонок в существующие таблицы
+	if err := applyColumnMigrations(db); err != nil {
+		log.Printf("Warning: Could not apply column migrations: %v", err)
+	}
+
 	// Создание дополнительных индексов после успешной миграции
 	if err := createAdditionalConstraints(db); err != nil {
 		log.Printf("Warning: Could not create additional constraints: %v", err)
@@ -46,7 +51,8 @@ func createTablesWithoutFKs(db *gorm.DB) error {
 			birthdate DATE,
 			gender VARCHAR(10),
 			creation_datetime TIMESTAMPTZ DEFAULT NOW(),
-			password VARCHAR(255) NOT NULL
+			password VARCHAR(255) NOT NULL,
+			last_payment_datetime TIMESTAMPTZ
 		)`,
 		`CREATE TABLE IF NOT EXISTS link_tokens (
 			token VARCHAR(255) PRIMARY KEY,
@@ -136,6 +142,21 @@ func addForeignKeys(db *gorm.DB) error {
 		if err := db.Exec(fkSQL).Error; err != nil {
 			log.Printf("Warning: Could not add foreign key (might already exist): %v", err)
 			// Не прерываем выполнение, если FK уже существует
+		}
+	}
+
+	return nil
+}
+
+// applyColumnMigrations добавляет новые колонки в существующие таблицы
+func applyColumnMigrations(db *gorm.DB) error {
+	migrations := []string{
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_payment_datetime TIMESTAMPTZ`,
+	}
+
+	for _, sql := range migrations {
+		if err := db.Exec(sql).Error; err != nil {
+			log.Printf("Warning: Could not apply column migration: %v", err)
 		}
 	}
 
