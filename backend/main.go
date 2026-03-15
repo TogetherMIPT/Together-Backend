@@ -5,6 +5,7 @@ import (
 	"myapp/database"
 	"myapp/handlers"
 	"myapp/middleware"
+	"myapp/services"
 	"net/http"
 	"os"
 )
@@ -25,6 +26,9 @@ func main() {
 	}
 
 	log.Println("Database connected and migrated successfully!")
+
+	// Запускаем планировщик ежедневных email-уведомлений (20:00 по Москве)
+	services.StartDailyEmailScheduler(database.DB)
 
 	// Настраиваем роутинг
 	mux := http.NewServeMux()
