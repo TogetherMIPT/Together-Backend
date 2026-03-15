@@ -47,7 +47,7 @@ class PsychologyModel:
             print(f"Ошибка загрузки модели: {e}")
             raise
     
-    def generate_response(self, prompt: str, max_length: int = 200, temperature: float = 0.7) -> str:
+    def generate_response(self, prompt: str, max_length: int = None, temperature: float = 0.7) -> str:
         try:
             inputs = self.tokenizer(
                 prompt,
@@ -56,18 +56,21 @@ class PsychologyModel:
                 truncation=True,
                 max_length=512
             ).to(self.device)
-            
+
+            generate_kwargs = dict(
+                **inputs,
+                temperature=temperature,
+                do_sample=True,
+                top_p=0.9,
+                top_k=50,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+            )
+            if max_length is not None:
+                generate_kwargs["max_new_tokens"] = max_length
+
             with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=max_length,
-                    temperature=temperature,
-                    do_sample=True,
-                    top_p=0.9,
-                    top_k=50,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id
-                )
+                outputs = self.model.generate(**generate_kwargs)
             
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             
