@@ -15,8 +15,9 @@ type User struct {
 	City             string    `gorm:"column:city;type:varchar(100)"`
 	Birthdate        time.Time `gorm:"column:birthdate;type:date"`
 	Gender           string    `gorm:"column:gender;type:varchar(10)"`
-	CreationDatetime time.Time `gorm:"column:creation_datetime;autoCreateTime"`
-	Password         string    `gorm:"column:password;type:varchar(255);not null"`
+	CreationDatetime    time.Time  `gorm:"column:creation_datetime;autoCreateTime"`
+	Password            string     `gorm:"column:password;type:varchar(255);not null"`
+	LastPaymentDatetime *time.Time `gorm:"column:last_payment_datetime"`
 
 	// Связи
 	LinkTokens []LinkToken `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
