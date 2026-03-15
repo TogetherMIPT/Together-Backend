@@ -33,6 +33,7 @@ type ChatInfo struct {
 	ChatName  string `json:"chat_name"`
 	IsActive  bool   `json:"is_active"`
 	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // ChatsResponse представляет ответ со списком чатов
@@ -49,6 +50,16 @@ type CreateChatResponse struct {
 
 // DeleteChatResponse представляет ответ на удаление чата
 type DeleteChatResponse struct {
+	Message string `json:"message"`
+}
+
+// RenameChatRequest представляет запрос на переименование чата
+type RenameChatRequest struct {
+	ChatName string `json:"chat_name"`
+}
+
+// RenameChatResponse представляет ответ на переименование чата
+type RenameChatResponse struct {
 	Message string `json:"message"`
 }
 
@@ -109,7 +120,7 @@ func GetMessageBatchHandler(db *gorm.DB) http.HandlerFunc {
 		// Получаем сообщения с пагинацией
 		var messages []models.Message
 		if err := db.Where("chat_id = ?", chatID).
-			Order("creation_datetime DESC").
+			Order("creation_datetime ASC").
 			Limit(limit).
 			Offset(offset).
 			Find(&messages).Error; err != nil {
@@ -195,6 +206,7 @@ func GetChatsHandler(db *gorm.DB) http.HandlerFunc {
 				ChatName:  chat.ChatName,
 				IsActive:  chat.IsActive,
 				CreatedAt: chat.CreationDatetime.Format("2006-01-02T15:04:05Z"),
+				UpdatedAt: chat.UpdatedDatetime.Format("2006-01-02T15:04:05Z"),
 			}
 		}
 
@@ -261,6 +273,58 @@ func CreateChatHandler(db *gorm.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// RenameChatHandler обрабатывает PUT /chat/{chatId}
+func RenameChatHandler(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(pathParts) < 2 {
+			http.Error(w, "Chat ID is required", http.StatusBadRequest)
+			return
+		}
+
+		chatID, err := strconv.ParseUint(pathParts[len(pathParts)-1], 10, 32)
+		if err != nil {
+			http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+			return
+		}
+
+		var req RenameChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if strings.TrimSpace(req.ChatName) == "" {
+			http.Error(w, "Chat name cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		var chat models.Chat
+		if err := db.First(&chat, chatID).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				http.Error(w, "Chat not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, "Failed to fetch chat", http.StatusInternalServerError)
+			return
+		}
+
+		if err := db.Model(&chat).Update("chat_name", req.ChatName).Error; err != nil {
+			http.Error(w, "Failed to rename chat", http.StatusInternalServerError)
+			return
+		}
+
+		response := RenameChatResponse{Message: "Chat renamed successfully"}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}
 }
