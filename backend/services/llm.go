@@ -280,7 +280,6 @@ func GetChatContext(db *gorm.DB, chatID uint, maxTokens int, partnerContextPerce
 func (s *InternalLLMService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
 	// Применяем опции
 	opts := &LLMOptions{
-		MaxLength:   200,
 		Temperature: 0.7,
 	}
 	for _, opt := range options {
@@ -519,7 +518,6 @@ func (s *OpenRouterService) HealthCheck() error {
 func (s *OpenRouterService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
 	// Применяем опции
 	opts := &LLMOptions{
-		MaxLength:   200,
 		Temperature: 0.7,
 	}
 	for _, opt := range options {

@@ -19,7 +19,7 @@ app.add_middleware(
 
 class GenerateRequest(BaseModel):
     prompt: str
-    max_length: Optional[int] = 200
+    max_length: Optional[int] = None
     temperature: Optional[float] = 0.7
 
 class GenerateResponse(BaseModel):
