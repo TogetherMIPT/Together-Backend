@@ -60,6 +60,8 @@ func main() {
 		switch r.Method {
 		case http.MethodPost:
 			handlers.CreateChatHandler(database.DB)(w, r)
+		case http.MethodPut:
+			handlers.RenameChatHandler(database.DB)(w, r)
 		case http.MethodDelete:
 			handlers.DeleteChatHandler(database.DB)(w, r)
 		default:
@@ -96,6 +98,7 @@ func main() {
 	log.Printf("    GET    /msg_batch/{chatId}  - Get message batch by chat ID (params: limit, offset)")
 	log.Printf("    GET    /chats/{userId}      - Get all chats by user ID")
 	log.Printf("    POST   /chat/{userId}       - Create new chat for user")
+	log.Printf("    PUT    /chat/{chatId}       - Rename chat by chat ID")
 	log.Printf("    DELETE /chat/{chatId}       - Delete chat by chat ID")
 	log.Printf("    GET    /link_token          - Generate link token for user linking")
 	log.Printf("    POST   /link                - Link users using token")

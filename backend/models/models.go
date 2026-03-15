@@ -43,6 +43,7 @@ type LinkToken struct {
 type Chat struct {
 	ChatID           uint      `gorm:"primaryKey;column:chat_id;autoIncrement"`
 	CreationDatetime time.Time `gorm:"column:creation_datetime;autoCreateTime"`
+	UpdatedDatetime  time.Time `gorm:"column:updated_datetime;autoUpdateTime"`
 	UserID           uint      `gorm:"column:user_id;not null;index"`
 	IsActive         bool      `gorm:"column:is_active;default:true"`
 	ChatName         string    `gorm:"column:chat_name;type:varchar(255)"`
