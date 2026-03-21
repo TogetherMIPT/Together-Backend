@@ -10,6 +10,9 @@ import (
 	"os"
 	"strings"
 	"time"
+	"crypto/tls"
+	"sync"
+	"github.com/google/uuid"
 
 	"myapp/models"
 	"gorm.io/gorm"
@@ -48,10 +51,16 @@ type LLMGenerateResponse struct {
 // Возвращает интерфейс для поддержки нескольких провайдеров
 func NewLLMService() LLMServiceInterface {
 	useOpenRouter := os.Getenv("USE_OPENROUTER") == "true"
+	useGigachat := os.Getenv("USE_GIGACHAT") == "true"
 	
 	if useOpenRouter {
 		log.Println("Используется OpenRouter API для LLM")
 		return NewOpenRouterService()
+	}
+
+	if useGigachat {
+		log.Println("Используется GigaChat API для LLM (модель: " + os.Getenv("GIGACHAT_MODEL") + ")")
+		return NewGigachatService()
 	}
 	
 	log.Println("Используется внутренний LLM сервис")
@@ -70,52 +79,6 @@ func NewLLMService() LLMServiceInterface {
 		timeout:    120 * time.Second,
 	}
 }
-
-// // GetChatContext формирует контекст из истории сообщений
-// func GetChatContext(db *gorm.DB, chatID uint, maxTokens int) string {
-// 	var messages []models.Message
-// 	db.Where("chat_id = ?", chatID).
-// 		Order("creation_datetime asc").
-// 		Limit(100).
-// 		Find(&messages)
-
-// 	var contextBuilder strings.Builder
-// 	tokenCount := 0
-
-// 	for _, msg := range messages {
-// 		var prefix string
-// 		if msg.IsFromUser {
-// 			prefix = "Пользователь: "
-// 		} else {
-// 			prefix = "Психолог: "
-// 		}
-
-// 		// Оценка токенов: ~1 токен на 4 символа (для русского текста)
-// 		// В реальной реализации используйте токенизатор модели
-// 		messageStr := prefix + msg.MessageText + "\n"
-// 		messageTokens := len(messageStr) / 4
-
-// 		if tokenCount+messageTokens > maxTokens {
-// 			// Если не помещается текущее сообщение, прекращаем
-// 			// Можно также обрезать старые сообщения для сохранения контекста
-// 			remainingTokens := maxTokens - tokenCount
-// 			if remainingTokens > 0 {
-// 				// Обрезаем сообщение до оставшихся токенов
-// 				allowedChars := remainingTokens * 4
-// 				if len(messageStr) > allowedChars {
-// 					messageStr = messageStr[:allowedChars] + "..."
-// 				}
-// 				contextBuilder.WriteString(messageStr)
-// 			}
-// 			break
-// 		}
-
-// 		contextBuilder.WriteString(messageStr)
-// 		tokenCount += messageTokens
-// 	}
-
-// 	return contextBuilder.String()
-// }
 
 
 // GetChatContext формирует контекст из истории сообщений текущего чата 
@@ -686,4 +649,333 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+// GigachatService представляет клиент для работы с GigaChat API (Sber)
+type GigachatService struct {
+	authKey       string // Authorization Key (Base64 client_id:client_secret)
+	scope         string // GIGACHAT_API_PERS / B2B / CORP
+	apiURL        string
+	tokenURL      string
+	modelName     string
+	client        *http.Client
+	accessToken   string
+	tokenExpires  int64 // Время истечения токена (Unix timestamp)
+	tokenMutex    sync.RWMutex
+}
 
+// GigachatTokenResponse структура ответа при получении токена
+// Важно: GigaChat возвращает expires_in (секунды), а не expires_at!
+type GigachatTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"` // Время жизни токена в секундах (обычно 1800 = 30 мин)
+}
+
+// GigachatChatRequest структура запроса к чат-эндпоинту
+type GigachatChatRequest struct {
+	Model             string `json:"model"`
+	Messages          []Message `json:"messages"`
+	Temperature       float64 `json:"temperature,omitempty"`
+	TopP              float64 `json:"top_p,omitempty"`
+	N                 int     `json:"n,omitempty"`
+	Stream            bool    `json:"stream,omitempty"`
+	MaxTokens         int     `json:"max_tokens,omitempty"`
+	RepetitionPenalty float64 `json:"repetition_penalty,omitempty"`
+}
+
+// Message — вспомогательная структура для сообщений (переиспользуемая)
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// GigachatChatResponse структура ответа от чат-эндпоинта
+type GigachatChatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+			Role    string `json:"role"`
+		} `json:"message"`
+		Index        int    `json:"index"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
+	Object  string `json:"object"`
+	Usage   struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// NewGigachatService создаёт новый экземпляр сервиса GigaChat
+func NewGigachatService() *GigachatService {
+	authKey := os.Getenv("GIGACHAT_AUTH_KEY")
+	if authKey == "" {
+		log.Fatal("GIGACHAT_AUTH_KEY не установлен. Вставьте ваш Authorization Key из https://developers.sber.ru/")
+	}
+
+	scope := os.Getenv("GIGACHAT_SCOPE")
+	if scope == "" {
+		scope = "GIGACHAT_API_PERS" // По умолчанию: для физических лиц
+	}
+
+	modelName := os.Getenv("GIGACHAT_MODEL")
+	if modelName == "" {
+		modelName = "GigaChat-2-Lite" // Доступные: GigaChat-2-Lite, GigaChat-2-Max, GigaChat:latest
+	}
+
+	// ⚠️ TLS-настройка для самоподписанных сертификатов Сбербанка
+	// В продакшене: загрузить сертификат НУЦ Минцифры и указать RootCAs
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true, // Только для тестов! Для prod настроить сертификаты
+	}
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+		// Опционально: настройка пула соединений для высокой нагрузки
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
+	return &GigachatService{
+		authKey:   authKey,
+		scope:     scope,
+		apiURL:    "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
+		tokenURL:  "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+		modelName: modelName,
+		client: &http.Client{
+			Timeout:   120 * time.Second,
+			Transport: transport,
+		},
+	}
+}
+
+// refreshAccessToken получает или обновляет access token для GigaChat API
+// Токен действителен 30 минут (1800 секунд) [[3]]
+func (s *GigachatService) refreshAccessToken() error {
+	s.tokenMutex.Lock()
+	defer s.tokenMutex.Unlock()
+
+	// Проверяем кэш: если токен ещё действителен (с запасом 60 секунд) — возвращаем его
+	if s.accessToken != "" && time.Now().Unix() < s.tokenExpires-60 {
+		return nil
+	}
+
+	// Подготовка запроса на получение токена
+	payload := strings.NewReader("scope=" + s.scope)
+	req, err := http.NewRequest("POST", s.tokenURL, payload)
+	if err != nil {
+		return fmt.Errorf("ошибка создания запроса токена: %w", err)
+	}
+
+	// Обязательные заголовки для OAuth-запроса [[3]]
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("RqUID", uuid.New().String()) // Уникальный ID для трассировки
+	req.Header.Set("Authorization", "Basic " + s.authKey) // Authorization Key
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("ошибка запроса токена: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("ошибка чтения ответа токена: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GigaChat token API вернул статус %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Парсим ответ
+	var tokenResp GigachatTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return fmt.Errorf("ошибка декодирования токена: %w. Ответ: %s", err, string(body))
+	}
+
+	if tokenResp.AccessToken == "" {
+		return fmt.Errorf("пустой access_token в ответе GigaChat")
+	}
+
+	// Кэшируем токен с расчётом времени истечения
+	// expires_in — время жизни в секундах (обычно 1800)
+	now := time.Now().Unix()
+	s.accessToken = tokenResp.AccessToken
+	s.tokenExpires = now + int64(tokenResp.ExpiresIn) - 60 // Запас 60 секунд
+
+	log.Printf("Получен новый токен GigaChat, истекает через ~%d сек", tokenResp.ExpiresIn-60)
+	return nil
+}
+
+// GetLLMResponse получает ответ от GigaChat модели
+func (s *GigachatService) GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error) {
+	// Применяем опции генерации
+	opts := &LLMOptions{
+		Temperature: 0.7,
+		MaxLength:   512,
+	}
+	for _, opt := range options {
+		opt(opts)
+	}
+
+	// Гарантируем актуальный токен перед запросом
+	if err := s.refreshAccessToken(); err != nil {
+		return "", fmt.Errorf("ошибка авторизации GigaChat: %w", err)
+	}
+
+	// Системный промпт для психолога
+	systemPrompt := "Ты — профессиональный психолог, который помогает людям разобраться в их чувствах и проблемах. Отвечай эмпатично, поддерживая и задавая уточняющие вопросы. Не давай медицинских советов, а направляй к специалистам при необходимости."
+
+	// Формируем сообщения в формате OpenAI/GigaChat
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+	}
+
+	// Добавляем контекст истории диалога (если есть)
+	if context != "" {
+		messages = append(messages, Message{
+			Role:    "user",
+			Content: "История диалога:\n" + context,
+		})
+	}
+
+	// Добавляем текущее сообщение пользователя
+	messages = append(messages, Message{
+		Role:    "user",
+		Content: userMessage,
+	})
+
+	// Создаём тело запроса
+	request := GigachatChatRequest{
+		Model:             s.modelName,
+		Messages:          messages,
+		Temperature:       opts.Temperature,
+		MaxTokens:         opts.MaxLength,
+		Stream:            false,
+		RepetitionPenalty: 1.0,
+	}
+
+	// Ограничиваем температуру в допустимых пределах [0, 2]
+	if request.Temperature < 0 {
+		request.Temperature = 0
+	}
+	if request.Temperature > 2.0 {
+		request.Temperature = 2.0
+	}
+
+	// Маршалим запрос
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return "", fmt.Errorf("ошибка маршалинга запроса: %w", err)
+	}
+
+	// Создаём HTTP-запрос
+	req, err := http.NewRequest("POST", s.apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания HTTP-запроса: %w", err)
+	}
+
+	// Устанавливаем заголовки
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.accessToken) // Access Token
+	req.Header.Set("X-Request-ID", uuid.New().String())      // Для трассировки в логах Сбера
+
+	// Отправляем запрос
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ошибка вызова GigaChat API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Читаем ответ
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("ошибка чтения ответа: %w", err)
+	}
+
+	// Обрабатываем ошибки API
+	if resp.StatusCode != http.StatusOK {
+		// Пробуем распарсить ошибку в формате GigaChat
+		var errorResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+			return "", fmt.Errorf("GigaChat API error [%s]: %s", errorResp.Error.Code, errorResp.Error.Message)
+		}
+		return "", fmt.Errorf("GigaChat API вернул статус %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Декодируем успешный ответ
+	var response GigachatChatResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("ошибка декодирования ответа: %w. Ответ: %s", err, string(body))
+	}
+
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("пустой ответ от GigaChat API (choices empty)")
+	}
+
+	// Извлекаем и очищаем текст ответа
+	responseText := strings.TrimSpace(response.Choices[0].Message.Content)
+
+	// Логируем метрики
+	log.Printf("GigaChat: модель=%s, токены=%d (prompt=%d, completion=%d)",
+		response.Model,
+		response.Usage.TotalTokens,
+		response.Usage.PromptTokens,
+		response.Usage.CompletionTokens,
+	)
+
+	return responseText, nil
+}
+
+// HealthCheck проверяет доступность GigaChat сервиса
+func (s *GigachatService) HealthCheck() error {
+	// 1. Обновляем токен (из кэша или запрашиваем новый)
+	// Метод возвращает только error, токен сохраняется в s.accessToken
+	if err := s.refreshAccessToken(); err != nil {
+		return fmt.Errorf("ошибка авторизации: %w", err)
+	}
+
+	// 2. Используем поле s.accessToken напрямую
+	req, err := http.NewRequest("GET", "https://gigachat.devices.sberbank.ru/api/v1/models", nil)
+	if err != nil {
+		return fmt.Errorf("ошибка создания запроса: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+s.accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		// Не блокируем запуск приложения при временных сетевых проблемах
+		log.Printf("Health check: предупреждение подключения к GigaChat: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	log.Println("GigaChat сервис доступен")
+	return nil
+}
+
+// // Вспомогательный метод для health check (чтобы не блокировать основной токен)
+// func (s *GigachatService) getAccessTokenForHealthCheck() (string, error) {
+// 	s.tokenMutex.RLock()
+// 	if s.accessToken != "" && time.Now().Unix() < s.tokenExpires-60 {
+// 		token := s.accessToken
+// 		s.tokenMutex.RUnlock()
+// 		return token, nil
+// 	}
+// 	s.tokenMutex.RUnlock()
+	
+// 	// Если токен устарел — получаем новый (с локом)
+// 	if err := s.refreshAccessToken(); err != nil {
+// 		return "", err
+// 	}
+// 	return s.accessToken, nil
+// }
