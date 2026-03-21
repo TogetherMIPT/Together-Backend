@@ -962,20 +962,3 @@ func (s *GigachatService) HealthCheck() error {
 	log.Println("GigaChat сервис доступен")
 	return nil
 }
-
-// // Вспомогательный метод для health check (чтобы не блокировать основной токен)
-// func (s *GigachatService) getAccessTokenForHealthCheck() (string, error) {
-// 	s.tokenMutex.RLock()
-// 	if s.accessToken != "" && time.Now().Unix() < s.tokenExpires-60 {
-// 		token := s.accessToken
-// 		s.tokenMutex.RUnlock()
-// 		return token, nil
-// 	}
-// 	s.tokenMutex.RUnlock()
-	
-// 	// Если токен устарел — получаем новый (с локом)
-// 	if err := s.refreshAccessToken(); err != nil {
-// 		return "", err
-// 	}
-// 	return s.accessToken, nil
-// }
