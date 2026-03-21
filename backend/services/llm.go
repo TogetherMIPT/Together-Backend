@@ -21,6 +21,7 @@ import (
 // LLMServiceInterface интерфейс для работы с различными LLM провайдерами
 type LLMServiceInterface interface {
 	GetLLMResponse(context string, userMessage string, options ...LLMOption) (string, error)
+	GenerateChatName(firstMessage string) string
 	HealthCheck() error
 }
 
@@ -961,4 +962,335 @@ func (s *GigachatService) HealthCheck() error {
 
 	log.Println("GigaChat сервис доступен")
 	return nil
+}
+
+
+// GenerateChatName создаёт короткое описательное название чата на основе первого сообщения
+// Возвращает название или пустую строку при ошибке (не блокирует основной поток)
+func (s *InternalLLMService) GenerateChatName(firstMessage string) string {
+	// Специальный промпт для генерации названия (короткий и строгий)
+	// Ограничиваем ответ 1-5 словами, без кавычек и пунктуации
+	prompt := fmt.Sprintf(`Сгенерируй короткое название для диалога с психологом на основе первого сообщения пользователя.
+Требования:
+- Максимум 5 слов
+- Без кавычек, точек, восклицательных знаков
+- Только суть темы обращения
+- Язык ответа: русский
+
+Сообщение пользователя: "%s"
+
+Название:`, firstMessage)
+
+	// Вызываем LLM с агрессивными ограничениями для краткости
+	response, err := s.generate(prompt, 30, 0.3) // max_tokens=30, temp=0.3 для стабильности
+	if err != nil {
+		log.Printf("Ошибка генерации названия чата: %v", err)
+		return "" // Не блокируем основной поток
+	}
+
+	name := postProcessChatName(response)
+	
+	if name != "" && name != "Новый чат" {
+		log.Printf("OpenRouter: название чата = \"%s\"", name)
+	}
+	
+	log.Printf("Сгенерировано название чата: \"%s\"", name)
+	return name
+}
+
+// GenerateChatName создаёт короткое название чата на основе первого сообщения
+// Реализация для OpenRouter API
+func (s *OpenRouterService) GenerateChatName(firstMessage string) string {
+	// Системный промпт для генерации названия (строгий и краткий)
+	prompt := fmt.Sprintf(`Сгенерируй короткое название для диалога с психологом на основе первого сообщения пользователя.
+Требования:
+- Максимум 5 слов
+- Без кавычек, точек, восклицательных знаков
+- Только суть темы обращения
+- Язык ответа: русский
+
+Сообщение пользователя: "%s"
+
+Название:`, firstMessage)
+
+	// Формируем сообщения в формате OpenAI
+	messages := []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}{
+		{Role: "user", Content: prompt},
+	}
+
+	// Создаём запрос с агрессивными ограничениями для краткости
+	request := OpenRouterRequest{
+		Model:       s.modelName,
+		Messages:    messages,
+		Temperature: 0.3,  // Низкая температура для стабильности
+		TopP:        0.5,  // Узкое ядро для предсказуемости
+		MaxTokens:   30,   // Ограничение длины ответа (~5-7 слов)
+	}
+
+	// Маршалим запрос
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		log.Printf("Ошибка маршалинга запроса названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Создаём HTTP-запрос
+	req, err := http.NewRequest("POST", s.apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Ошибка создания запроса названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Устанавливаем заголовки
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	
+	// Обязательные заголовки для OpenRouter
+	HTTPReferer := os.Getenv("OPENROUTER_HTTP_REFERER")
+	if HTTPReferer == "" {
+		HTTPReferer = "https://your-app.com"
+	}
+	XTitle := os.Getenv("OPENROUTER_X_TITLE")
+	if XTitle == "" {
+		XTitle = "Psychology Chat App"
+	}
+	req.Header.Set("HTTP-Referer", HTTPReferer)
+	req.Header.Set("X-Title", XTitle)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log.Printf("Ошибка вызова OpenRouter для названия чата: %v", err)
+		return "Новый чат"
+	}
+	defer resp.Body.Close()
+
+	// Читаем ответ
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Ошибка чтения ответа названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Обрабатываем ошибки API
+	if resp.StatusCode != http.StatusOK {
+		var errorResp OpenRouterResponse
+		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+			log.Printf("OpenRouter API error для названия: %s", errorResp.Error.Message)
+		} else {
+			log.Printf("OpenRouter вернул статус %d: %s", resp.StatusCode, string(body))
+		}
+		return "Новый чат"
+	}
+
+	// Декодируем ответ
+	var response OpenRouterResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Printf("Ошибка декодирования ответа названия: %v", err)
+		return "Новый чат"
+	}
+
+	if len(response.Choices) == 0 {
+		log.Printf("Пустой ответ от OpenRouter для названия чата")
+		return "Новый чат"
+	}
+
+	// Извлекаем и пост-обрабатываем текст
+	name := strings.TrimSpace(response.Choices[0].Message.Content)
+	name = postProcessChatName(name)
+	
+	if name != "" && name != "Новый чат" {
+		log.Printf("OpenRouter: название чата = \"%s\"", name)
+	}
+	
+	return name
+}
+
+// GenerateChatName создаёт короткое название чата на основе первого сообщения
+// Реализация для GigaChat API
+func (s *GigachatService) GenerateChatName(firstMessage string) string {
+	// Системный промпт для генерации названия
+	systemPrompt := `Ты создаёшь короткие названия для чатов с психологом.
+Правила:
+1. Максимум 5 слов
+2. Без кавычек, точек, восклицательных/вопросительных знаков
+3. Только суть темы, без местоимений "я", "мне"
+4. Язык ответа: русский
+5. Верни ТОЛЬКО название, без пояснений`
+
+	// Формируем сообщения в формате GigaChat/OpenAI
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: fmt.Sprintf("Создай название для чата на основе сообщения: \"%s\"", firstMessage)},
+	}
+
+	// Получаем актуальный токен
+	accessToken, err := s.getAccessTokenForChatName()
+	if err != nil {
+		log.Printf("Ошибка получения токена для названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Создаём запрос с ограничениями
+	request := GigachatChatRequest{
+		Model:             s.modelName,
+		Messages:          messages,
+		Temperature:       0.3,  // Низкая температура для стабильности
+		TopP:              0.5,  // Узкое ядро
+		MaxTokens:         30,   // Ограничение длины
+		Stream:            false,
+		RepetitionPenalty: 1.1,  // Избегаем повторов
+	}
+
+	// Маршалим запрос
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		log.Printf("Ошибка маршалинга запроса названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Создаём HTTP-запрос
+	req, err := http.NewRequest("POST", s.apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Ошибка создания запроса названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Устанавливаем заголовки
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("X-Request-ID", uuid.New().String())
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		log.Printf("Ошибка вызова GigaChat для названия чата: %v", err)
+		return "Новый чат"
+	}
+	defer resp.Body.Close()
+
+	// Читаем ответ
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Ошибка чтения ответа названия чата: %v", err)
+		return "Новый чат"
+	}
+
+	// Обрабатываем ошибки API
+	if resp.StatusCode != http.StatusOK {
+		var errorResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+			log.Printf("GigaChat API error [%s] для названия: %s", errorResp.Error.Code, errorResp.Error.Message)
+		} else {
+			log.Printf("GigaChat вернул статус %d: %s", resp.StatusCode, string(body))
+		}
+		return "Новый чат"
+	}
+
+	// Декодируем ответ
+	var response GigachatChatResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Printf("Ошибка декодирования ответа названия: %v", err)
+		return "Новый чат"
+	}
+
+	if len(response.Choices) == 0 {
+		log.Printf("Пустой ответ от GigaChat для названия чата")
+		return "Новый чат"
+	}
+
+	// Извлекаем и пост-обрабатываем текст
+	name := strings.TrimSpace(response.Choices[0].Message.Content)
+	name = postProcessChatName(name)
+	
+	if name != "" && name != "Новый чат" {
+		log.Printf("GigaChat: название чата = \"%s\"", name)
+	}
+	
+	return name
+}
+
+// getAccessTokenForChatName получает токен для генерации названия
+// Использует отдельный локовый механизм, чтобы не блокировать основной поток
+func (s *GigachatService) getAccessTokenForChatName() (string, error) {
+	// Сначала пробуем прочитать без лога (read lock)
+	s.tokenMutex.RLock()
+	if s.accessToken != "" && time.Now().Unix() < s.tokenExpires-60 {
+		token := s.accessToken
+		s.tokenMutex.RUnlock()
+		return token, nil
+	}
+	s.tokenMutex.RUnlock()
+	
+	// Если токен устарел — получаем новый (с полным локом)
+	// Для chat name generation не блокируем основной поток, если не получилось
+	if err := s.refreshAccessToken(); err != nil {
+		return "", err
+	}
+	return s.accessToken, nil
+}
+
+// postProcessChatName — общая функция очистки и валидации названия чата
+// Используется всеми провайдерами для единообразия результата
+func postProcessChatName(name string) string {
+	// 1. Базовая очистка
+	name = strings.TrimSpace(name)
+	name = strings.Trim(name, `"'.,!?;:`)
+	
+	// 2. Ограничение длины
+	if len(name) > 100 {
+		name = name[:100]
+	}
+	
+	// 3. Если пустой или слишком короткий — дефолт
+	if name == "" || len(name) < 2 {
+		return "Новый чат"
+	}
+	
+	// 4. Если есть переносы — берём первую строку
+	if idx := strings.Index(name, "\n"); idx > 0 {
+		name = strings.TrimSpace(name[:idx])
+	}
+	
+	// 5. Если модель вернула список вариантов — берём первый
+	if strings.Contains(name, "\n") || strings.Contains(name, "•") || strings.Contains(name, "- ") {
+		lines := strings.Split(name, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			line = strings.TrimPrefix(line, "• ")
+			line = strings.TrimPrefix(line, "- ")
+			if len(line) >= 2 {
+				name = line
+				break
+			}
+		}
+	}
+	
+	// 6. Защита от слишком общих названий
+	genericNames := []string{"диалог", "разговор", "беседа", "чат", "помощь", "консультация"}
+	for _, generic := range genericNames {
+		if strings.EqualFold(strings.TrimSpace(name), generic) {
+			return "Новый чат"
+		}
+	}
+	
+	// 7. Защита от чувствительных слов (опционально)
+	// blockedWords := []string{"суицид", "смерть", "убить"}
+	// for _, word := range blockedWords {
+	//     if strings.Contains(strings.ToLower(name), word) {
+	//         return "Конфиденциальный диалог"
+	//     }
+	// }
+	
+	// 8. Убираем лишние пробелы внутри
+	name = strings.Join(strings.Fields(name), " ")
+	
+	return name
 }

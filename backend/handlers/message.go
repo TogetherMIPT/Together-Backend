@@ -155,6 +155,8 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
+		go generateChatNameIfNeeded(db, llmService, req.ChatID, req.Message)
+
 		// Возвращаем ответ
 		response := MessageResponse{
 			Response: llmResponse,
@@ -162,5 +164,36 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
+	}
+}
+
+
+func generateChatNameIfNeeded(db *gorm.DB, llmService services.LLMServiceInterface, chatID uint, firstMessage string) {
+	// Небольшая задержка, чтобы не конкурировать с основным запросом
+	time.Sleep(500 * time.Millisecond)
+	
+	// Проверяем, первое ли это сообщение
+	var count int64
+	if err := db.Model(&models.Message{}).
+		Where("chat_id = ?", chatID).
+		Count(&count).Error; err != nil {
+		log.Printf("Ошибка подсчёта сообщений: %v", err)
+		return
+	}
+	
+	// Генерируем название только для первого сообщения пользователя
+	// (учитываем, что текущее сообщение уже сохранено)
+	if count <= 2 {
+		name := llmService.GenerateChatName(firstMessage)
+		if name != "" && name != "Новый чат" {
+			// Обновляем название чата
+			if err := db.Model(&models.Chat{}).
+				Where("chat_id = ?", chatID).
+				Update("chat_name", name).Error; err != nil {
+				log.Printf("Ошибка обновления chat_name: %v", err)
+			} else {
+				log.Printf("Чат %d: название = \"%s\"", chatID, name)
+			}
+		}
 	}
 }
