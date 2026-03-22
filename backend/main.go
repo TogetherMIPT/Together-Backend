@@ -85,6 +85,7 @@ func main() {
 	// Эндпоинты для ежедневного опроса состояния
 	mux.Handle("/survey", withAuth(handlers.DailySurveyHandler(database.DB)))
 	mux.Handle("/survey/status", withAuth(handlers.SurveyStatusHandler(database.DB)))
+	mux.Handle("/survey/history", withAuth(handlers.SurveyHistoryHandler(database.DB)))
 
 	// Получаем порт из переменной окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
@@ -124,4 +125,5 @@ func logEndpoints() {
 	log.Printf("    DELETE /link/{userId}       - Delete link between users")
 	log.Printf("    POST   /survey              - Submit daily mood survey")
 	log.Printf("    GET    /survey/status       - Check if user completed today's survey")
+	log.Printf("    GET    /survey/history      - Get last month survey history with LLM summary and recommendations")
 }
