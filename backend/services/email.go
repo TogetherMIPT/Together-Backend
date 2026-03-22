@@ -26,8 +26,8 @@ func sendDailyNotifications(db *gorm.DB) {
 
 	host := smtpEnv("SMTP_HOST", "smtp.gmail.com")
 	port := smtpEnv("SMTP_PORT", "587")
-	from := smtpEnv("SMTP_USER", "you@gmail.com")
-	password := smtpEnv("SMTP_PASSWORD", "gmailpassword")
+	from := smtpEnv("SMTP_USER", "fritata.artemyeva@gmail.com")
+	password := smtpEnv("SMTP_PASSWORD", "YY7xDrJh7UoAh1UD6x34")
 
 	auth := smtp.PlainAuth("", from, password, host)
 	addr := host + ":" + port
@@ -81,4 +81,39 @@ func StartDailyEmailScheduler(db *gorm.DB) {
 			sendDailyNotifications(db)
 		}
 	}()
+}
+
+// SendTrialEndAdminNotification отправляет письмо администратору об окончании триала у пользователя.
+func SendTrialEndAdminNotification(userEmail, userLogin string) {
+	host := smtpEnv("SMTP_HOST", "smtp.gmail.com")
+	port := smtpEnv("SMTP_PORT", "587")
+	from := smtpEnv("SMTP_USER", "fritata.artemyeva@gmail.com")
+	password := smtpEnv("SMTP_PASSWORD", "YY7xDrJh7UoAh1UD6x34")
+
+	auth := smtp.PlainAuth("", from, password, host)
+	addr := host + ":" + port
+
+	adminEmail := "fritata.artemyeva@gmail.com"
+
+	identifier := userEmail
+	if identifier == "" {
+		identifier = userLogin
+	}
+
+	subject := "Уведомление: пользователь достиг окончания триала"
+	body := "Пользователь " + identifier + " достиг окончания триал."
+
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + adminEmail + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"Content-Type: text/plain; charset=UTF-8\r\n" +
+			"\r\n" +
+			body + "\r\n",
+	)
+	if err := smtp.SendMail(addr, auth, from, []string{adminEmail}, msg); err != nil {
+		log.Printf("Trial end admin notification: failed to send: %v", err)
+	} else {
+		log.Printf("Trial end admin notification: sent for user %s", identifier)
+	}
 }
