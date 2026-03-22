@@ -92,49 +92,15 @@ func main() {
 		port = "8080"
 	}
 
-	// Оборачиваем весь роутер в CORS + HTTPS redirect middleware
+	// Оборачиваем весь роутер в CORS + HTTPS redirect middleware.
+	// TLS-терминация выполняется на уровне reverse proxy (nginx/traefik).
 	handler := middleware.CORSMiddleware(middleware.HTTPSRedirectMiddleware(mux))
 
-	// TLS-сертификат и ключ (опционально, для прямого TLS без reverse proxy)
-	certFile := os.Getenv("TLS_CERT_FILE")
-	keyFile := os.Getenv("TLS_KEY_FILE")
-
-	if certFile != "" && keyFile != "" {
-		// Запускаем дополнительный HTTP-сервер только для редиректа на HTTPS
-		httpPort := os.Getenv("HTTP_PORT")
-		if httpPort == "" {
-			httpPort = "8080"
-		}
-		httpsPort := port
-		if httpsPort == "8080" {
-			httpsPort = "8443"
-		}
-
-		go func() {
-			redirectMux := http.NewServeMux()
-			redirectMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				target := "https://" + r.Host + r.URL.RequestURI()
-				http.Redirect(w, r, target, http.StatusMovedPermanently)
-			})
-			log.Printf("Starting HTTP redirect server on :%s → HTTPS", httpPort)
-			if err := http.ListenAndServe(":"+httpPort, redirectMux); err != nil {
-				log.Printf("HTTP redirect server error: %v", err)
-			}
-		}()
-
-		addr := ":" + httpsPort
-		log.Printf("Starting HTTPS server on %s", addr)
-		logEndpoints()
-		if err := http.ListenAndServeTLS(addr, certFile, keyFile, handler); err != nil {
-			log.Fatal("Failed to start HTTPS server:", err)
-		}
-	} else {
-		addr := ":" + port
-		log.Printf("Starting HTTP server on %s (set TLS_CERT_FILE and TLS_KEY_FILE for HTTPS)", addr)
-		logEndpoints()
-		if err := http.ListenAndServe(addr, handler); err != nil {
-			log.Fatal("Failed to start server:", err)
-		}
+	addr := ":" + port
+	log.Printf("Starting HTTP server on %s", addr)
+	logEndpoints()
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		log.Fatal("Failed to start server:", err)
 	}
 }
 
