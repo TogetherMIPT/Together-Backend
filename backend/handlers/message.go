@@ -80,8 +80,11 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 		paidRecently := user.LastPaymentDatetime != nil && now.Sub(*user.LastPaymentDatetime) <= 30*24*time.Hour
 		if !registeredRecently && !paidRecently {
 			// Фиксируем дату "оплаты" и сохраняем сообщение об оплате в историю чата
-			paymentMessage := "Оплатите подписку. Можно тут: бусти."
+			paymentMessage := "Привет! Это команда Together. Предлагаем пообщаться и обсудить твой опыт использования приложения!"
 			db.Model(user).Update("last_payment_datetime", now)
+
+			// Уведомляем администратора об окончании триала
+			go services.SendTrialEndAdminNotification(user.Email, user.Login)
 
 			assistantPaymentMsg := models.Message{
 				ChatID:      req.ChatID,
