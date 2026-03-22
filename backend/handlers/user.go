@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"myapp/crypto"
+	"myapp/middleware"
 	"myapp/models"
 	"myapp/utils"
 	"net/http"
@@ -159,23 +161,48 @@ func UpdateProfileHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// Обновляем поля, если они переданы
+		// Обновляем поля, если они переданы (чувствительные поля шифруются перед сохранением)
 		updates := make(map[string]interface{})
 
 		if req.Name != "" {
-			updates["name"] = req.Name
+			enc, err := crypto.Encrypt(req.Name)
+			if err != nil {
+				http.Error(w, "Failed to process name", http.StatusInternalServerError)
+				return
+			}
+			updates["name"] = enc
 		}
 		if req.Email != "" {
-			updates["email"] = req.Email
+			enc, err := crypto.Encrypt(req.Email)
+			if err != nil {
+				http.Error(w, "Failed to process email", http.StatusInternalServerError)
+				return
+			}
+			updates["email"] = enc
 		}
 		if req.Country != "" {
-			updates["country"] = req.Country
+			enc, err := crypto.Encrypt(req.Country)
+			if err != nil {
+				http.Error(w, "Failed to process country", http.StatusInternalServerError)
+				return
+			}
+			updates["country"] = enc
 		}
 		if req.City != "" {
-			updates["city"] = req.City
+			enc, err := crypto.Encrypt(req.City)
+			if err != nil {
+				http.Error(w, "Failed to process city", http.StatusInternalServerError)
+				return
+			}
+			updates["city"] = enc
 		}
 		if req.Gender != "" {
-			updates["gender"] = req.Gender
+			enc, err := crypto.Encrypt(req.Gender)
+			if err != nil {
+				http.Error(w, "Failed to process gender", http.StatusInternalServerError)
+				return
+			}
+			updates["gender"] = enc
 		}
 		if req.Birthdate != "" {
 			birthdate, err := time.Parse("2006-01-02", req.Birthdate)
@@ -241,28 +268,28 @@ func GetProfileHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// Находим пользователя
-		var user models.User
-		if err := db.First(&user, userID).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				http.Error(w, "User not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "Failed to fetch user", http.StatusInternalServerError)
+		// Разрешаем просматривать только собственный профиль
+		currentUser := middleware.GetUserFromContext(r)
+		if currentUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if uint(userID) != currentUser.UserID {
+			http.Error(w, "Access denied", http.StatusForbidden)
 			return
 		}
 
 		// Возвращаем ответ (без пароля!)
 		response := ProfileResponse{
-			UserID:    user.UserID,
-			Name:      user.Name,
-			Email:     user.Email,
-			Login:     user.Login,
-			Country:   user.Country,
-			City:      user.City,
-			Birthdate: user.Birthdate,
-			Gender:    user.Gender,
-			CreatedAt: user.CreationDatetime,
+			UserID:    currentUser.UserID,
+			Name:      currentUser.Name,
+			Email:     currentUser.Email,
+			Login:     currentUser.Login,
+			Country:   currentUser.Country,
+			City:      currentUser.City,
+			Birthdate: currentUser.Birthdate,
+			Gender:    currentUser.Gender,
+			CreatedAt: currentUser.CreationDatetime,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

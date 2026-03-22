@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"myapp/middleware"
 	"myapp/models"
 	"net/http"
 	"strconv"
@@ -102,7 +103,13 @@ func GetMessageBatchHandler(db *gorm.DB) http.HandlerFunc {
 			}
 		}
 
-		// Проверяем существование чата
+		// Проверяем существование чата и принадлежность текущему пользователю
+		currentUser := middleware.GetUserFromContext(r)
+		if currentUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		var chat models.Chat
 		if err := db.First(&chat, chatID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -110,6 +117,11 @@ func GetMessageBatchHandler(db *gorm.DB) http.HandlerFunc {
 				return
 			}
 			http.Error(w, "Failed to fetch chat", http.StatusInternalServerError)
+			return
+		}
+
+		if chat.UserID != currentUser.UserID {
+			http.Error(w, "Access denied", http.StatusForbidden)
 			return
 		}
 
@@ -174,14 +186,14 @@ func GetChatsHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// Проверяем существование пользователя
-		var user models.User
-		if err := db.First(&user, userID).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				http.Error(w, "User not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "Failed to fetch user", http.StatusInternalServerError)
+		// Проверяем, что запрашивается только собственный список чатов
+		currentUser := middleware.GetUserFromContext(r)
+		if currentUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if uint(userID) != currentUser.UserID {
+			http.Error(w, "Access denied", http.StatusForbidden)
 			return
 		}
 
@@ -229,33 +241,16 @@ func CreateChatHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// Извлекаем userId из URL
-		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		if len(pathParts) < 2 {
-			http.Error(w, "User ID is required", http.StatusBadRequest)
-			return
-		}
-
-		userID, err := strconv.ParseUint(pathParts[len(pathParts)-1], 10, 32)
-		if err != nil {
-			http.Error(w, "Invalid user ID", http.StatusBadRequest)
-			return
-		}
-
-		// Проверяем существование пользователя
-		var user models.User
-		if err := db.First(&user, userID).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				http.Error(w, "User not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "Failed to fetch user", http.StatusInternalServerError)
+		// Используем ID аутентифицированного пользователя, игнорируя userId из URL
+		currentUser := middleware.GetUserFromContext(r)
+		if currentUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		// Создаем новый чат
 		chat := models.Chat{
-			UserID:   uint(userID),
+			UserID:   currentUser.UserID,
 			IsActive: true,
 			ChatName: "New Chat",
 		}
@@ -308,6 +303,12 @@ func RenameChatHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
+		currentUser := middleware.GetUserFromContext(r)
+		if currentUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		var chat models.Chat
 		if err := db.First(&chat, chatID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -315,6 +316,11 @@ func RenameChatHandler(db *gorm.DB) http.HandlerFunc {
 				return
 			}
 			http.Error(w, "Failed to fetch chat", http.StatusInternalServerError)
+			return
+		}
+
+		if chat.UserID != currentUser.UserID {
+			http.Error(w, "Access denied", http.StatusForbidden)
 			return
 		}
 
@@ -351,7 +357,13 @@ func DeleteChatHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// Проверяем существование чата
+		// Проверяем существование чата и принадлежность текущему пользователю
+		currentUser := middleware.GetUserFromContext(r)
+		if currentUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		var chat models.Chat
 		if err := db.First(&chat, chatID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -359,6 +371,11 @@ func DeleteChatHandler(db *gorm.DB) http.HandlerFunc {
 				return
 			}
 			http.Error(w, "Failed to fetch chat", http.StatusInternalServerError)
+			return
+		}
+
+		if chat.UserID != currentUser.UserID {
+			http.Error(w, "Access denied", http.StatusForbidden)
 			return
 		}
 
