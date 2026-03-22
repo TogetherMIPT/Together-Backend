@@ -5,6 +5,7 @@ import (
 	"myapp/middleware"
 	"myapp/models"
 	"net/http"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -89,5 +90,42 @@ func DailySurveyHandler(db *gorm.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// SurveyStatusResponse представляет ответ о статусе прохождения опроса
+type SurveyStatusResponse struct {
+	Completed bool `json:"completed"`
+}
+
+// SurveyStatusHandler обрабатывает GET /survey/status
+// Возвращает информацию о том, проходил ли клиент сегодня опрос
+func SurveyStatusHandler(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		ctxUser := middleware.GetUserFromContext(r)
+		if ctxUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		now := time.Now()
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		endOfDay := startOfDay.Add(24 * time.Hour)
+
+		var count int64
+		if err := db.Model(&models.DailySurvey{}).
+			Where("user_id = ? AND creation_datetime >= ? AND creation_datetime < ?", ctxUser.UserID, startOfDay, endOfDay).
+			Count(&count).Error; err != nil {
+			http.Error(w, "Failed to check survey status", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SurveyStatusResponse{Completed: count > 0})
 	}
 }
