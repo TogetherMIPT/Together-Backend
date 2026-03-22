@@ -143,14 +143,14 @@ func MessageHandler(db *gorm.DB) http.HandlerFunc {
 		// Обновляем время последней активности чата (такого поля у нас в БД нет)
 		//db.Model(&chat).Update("last_activity", db.NowFunc())
 		if err := db.Model(&chat).Update("is_active", true).Error; err != nil {
-			log.Printf("Ошибка активации чата: %w", err)
+			log.Printf("Ошибка активации чата: %v", err)
 			http.Error(w, "Failed to activate chat", http.StatusInternalServerError)
 			return
 		}
 
 		if err := db.Model(&models.Chat{}).
 		Where("chat_id <> ? AND is_active = ?", req.ChatID, true).Update("is_active", false).Error; err != nil {
-			log.Printf("Ошибка деактивации старых чатов: %w", err)
+			log.Printf("Ошибка деактивации старых чатов: %v", err)
 			http.Error(w, "Failed to deactivate old chats", http.StatusInternalServerError)
 			return
 		}

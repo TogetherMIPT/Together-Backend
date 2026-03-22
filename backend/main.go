@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"myapp/crypto"
 	"myapp/database"
 	"myapp/handlers"
 	"myapp/middleware"
@@ -11,6 +12,13 @@ import (
 )
 
 func main() {
+	// Загружаем ключ шифрования из окружения (обязателен в production)
+	encKey := os.Getenv("ENCRYPTION_KEY")
+	if encKey == "" {
+		log.Fatal("ENCRYPTION_KEY environment variable is required")
+	}
+	crypto.EncryptionKey = encKey
+
 	// Получаем конфигурацию БД
 	dbConfig := database.GetDefaultConfig()
 
@@ -84,9 +92,19 @@ func main() {
 		port = "8080"
 	}
 
-	// Запускаем HTTP сервер
+	// Оборачиваем весь роутер в CORS + HTTPS redirect middleware.
+	// TLS-терминация выполняется на уровне reverse proxy (nginx/traefik).
+	handler := middleware.CORSMiddleware(middleware.HTTPSRedirectMiddleware(mux))
+
 	addr := ":" + port
 	log.Printf("Starting HTTP server on %s", addr)
+	logEndpoints()
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		log.Fatal("Failed to start server:", err)
+	}
+}
+
+func logEndpoints() {
 	log.Printf("Available endpoints:")
 	log.Printf("  PUBLIC (no auth required):")
 	log.Printf("    POST   /register            - Register new user")
@@ -94,21 +112,16 @@ func main() {
 	log.Printf("    POST   /logout              - Logout and invalidate session")
 	log.Printf("  PROTECTED (requires Authorization header with session token):")
 	log.Printf("    PUT    /profile             - Update user profile")
-	log.Printf("    GET    /profile/{id}        - Get user profile by ID")
+	log.Printf("    GET    /profile/{id}        - Get own profile by ID")
 	log.Printf("    POST   /message             - Send message to chat")
 	log.Printf("    GET    /msg_batch/{chatId}  - Get message batch by chat ID (params: limit, offset)")
-	log.Printf("    GET    /chats/{userId}      - Get all chats by user ID")
-	log.Printf("    POST   /chat/{userId}       - Create new chat for user")
-	log.Printf("    PUT    /chat/{chatId}       - Rename chat by chat ID")
-	log.Printf("    DELETE /chat/{chatId}       - Delete chat by chat ID")
+	log.Printf("    GET    /chats/{userId}      - Get own chats")
+	log.Printf("    POST   /chat/{userId}       - Create new chat")
+	log.Printf("    PUT    /chat/{chatId}       - Rename own chat")
+	log.Printf("    DELETE /chat/{chatId}       - Delete own chat")
 	log.Printf("    GET    /link_token          - Generate link token for user linking")
 	log.Printf("    POST   /link                - Link users using token")
 	log.Printf("    DELETE /link/{userId}       - Delete link between users")
 	log.Printf("    POST   /survey              - Submit daily mood survey")
 	log.Printf("    GET    /survey/status       - Check if user completed today's survey")
-
-	// Оборачиваем весь роутер в CORS middleware (CORS отключён — разрешены все источники)
-	if err := http.ListenAndServe(addr, middleware.CORSMiddleware(mux)); err != nil {
-		log.Fatal("Failed to start server:", err)
-	}
 }

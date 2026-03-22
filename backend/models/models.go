@@ -1,8 +1,11 @@
 package models
 
 import (
+	"log"
+	"myapp/crypto"
 	"time"
-	// "gorm.io/gorm"
+
+	"gorm.io/gorm"
 )
 
 // User представляет пользователя системы
@@ -100,6 +103,68 @@ type DailySurvey struct {
 	// Связи
 	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
 }
+
+// ===================== Хуки шифрования =====================
+
+// encryptField шифрует поле и логирует ошибку, не прерывая операцию.
+func encryptField(value string) string {
+	if value == "" {
+		return value
+	}
+	enc, err := crypto.Encrypt(value)
+	if err != nil {
+		log.Printf("encrypt error: %v", err)
+		return value
+	}
+	return enc
+}
+
+// decryptField расшифровывает поле и логирует ошибку, возвращая оригинал при неудаче.
+func decryptField(value string) string {
+	if value == "" {
+		return value
+	}
+	dec, err := crypto.Decrypt(value)
+	if err != nil {
+		log.Printf("decrypt error: %v", err)
+		return value
+	}
+	return dec
+}
+
+// BeforeCreate шифрует чувствительные поля User перед вставкой в БД.
+func (u *User) BeforeCreate(tx *gorm.DB) error {
+	u.Name = encryptField(u.Name)
+	u.Email = encryptField(u.Email)
+	u.Country = encryptField(u.Country)
+	u.City = encryptField(u.City)
+	u.Gender = encryptField(u.Gender)
+	return nil
+}
+
+// AfterFind расшифровывает чувствительные поля User после загрузки из БД.
+func (u *User) AfterFind(tx *gorm.DB) error {
+	u.Name = decryptField(u.Name)
+	u.Email = decryptField(u.Email)
+	u.Country = decryptField(u.Country)
+	u.City = decryptField(u.City)
+	u.Gender = decryptField(u.Gender)
+	return nil
+}
+
+// BeforeCreate шифрует текст сообщения Message перед вставкой в БД.
+func (m *Message) BeforeCreate(tx *gorm.DB) error {
+	m.MessageText = encryptField(m.MessageText)
+	return nil
+}
+
+// AfterFind расшифровывает текст сообщения Message после загрузки из БД.
+func (m *Message) AfterFind(tx *gorm.DB) error {
+	m.MessageText = decryptField(m.MessageText)
+	return nil
+}
+
+// ===================== TableName методы для явного указания имен таблиц =====================
 
 // TableName методы для явного указания имен таблиц
 func (User) TableName() string {

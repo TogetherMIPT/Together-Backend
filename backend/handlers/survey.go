@@ -46,32 +46,15 @@ func DailySurveyHandler(db *gorm.DB) http.HandlerFunc {
 			}
 		}
 
-		// Определяем user_id: из аутентифицированного контекста или из тела запроса
-		var userID uint
-		if ctxUser := middleware.GetUserFromContext(r); ctxUser != nil {
-			userID = ctxUser.UserID
-		} else {
-			userID = req.UserID
-		}
-
-		if userID == 0 {
-			http.Error(w, "user_id is required", http.StatusBadRequest)
-			return
-		}
-
-		// Проверяем существование пользователя
-		var user models.User
-		if err := db.First(&user, userID).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				http.Error(w, "User not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "Failed to find user", http.StatusInternalServerError)
+		// Используем только ID аутентифицированного пользователя
+		ctxUser := middleware.GetUserFromContext(r)
+		if ctxUser == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		survey := models.DailySurvey{
-			UserID:        userID,
+			UserID:        ctxUser.UserID,
 			MoodAnswer:    req.MoodAnswer,
 			AnxietyAnswer: req.AnxietyAnswer,
 			ControlAnswer: req.ControlAnswer,
