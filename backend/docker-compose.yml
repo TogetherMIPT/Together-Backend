@@ -49,6 +49,7 @@ services:
       GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY}
       GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
       GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2-Lite}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-testtesttestest}
     ports:
       - "${APP_PORT}:8080"
     depends_on:
