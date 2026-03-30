@@ -103,10 +103,10 @@ func RegisterHandler(db *gorm.DB) http.HandlerFunc {
 
 		// Создаем нового пользователя
 		user := models.User{
-			Login:    req.Login,
+			Login:    req.Login, // На данный момент логином является email
 			Password: hashedPassword,
 			Name:     req.Name,
-			Email:    req.Email,
+			Email:    req.Login,
 			Country:  req.Country,
 			City:     req.City,
 			Gender:   req.Gender,
