@@ -95,6 +95,14 @@ func createTablesWithoutFKs(db *gorm.DB) error {
 			control_answer SMALLINT NOT NULL,
 			creation_datetime TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS survey_recommendations (
+			recommendation_id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			date DATE NOT NULL,
+			summary TEXT,
+			recommendations TEXT,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW()
+		)`,
 	}
 
 	for _, tableSQL := range tables {
@@ -136,6 +144,10 @@ func addForeignKeys(db *gorm.DB) error {
 
 		`ALTER TABLE daily_surveys
 		 ADD CONSTRAINT fk_daily_surveys_user
+		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE survey_recommendations
+		 ADD CONSTRAINT fk_survey_recommendations_user
 		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
 	}
 
@@ -197,6 +209,10 @@ func createAdditionalConstraints(db *gorm.DB) error {
 
 		// Индекс для daily_surveys по user_id
 		`CREATE INDEX IF NOT EXISTS idx_daily_surveys_user ON daily_surveys (user_id)`,
+
+		// Индекс и уникальное ограничение для survey_recommendations
+		`CREATE INDEX IF NOT EXISTS idx_survey_recommendations_user ON survey_recommendations (user_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_recommendations_user_date ON survey_recommendations (user_id, date)`,
 	}
 
 	for _, indexSQL := range indexes {
@@ -215,6 +231,7 @@ func DropTables(db *gorm.DB) error {
 
 	// Удаляем таблицы в обратном порядке зависимостей
 	tables := []string{
+		"survey_recommendations",
 		"daily_surveys",
 		"messages",
 		"relations",

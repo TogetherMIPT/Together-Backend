@@ -176,49 +176,74 @@ func SurveyHistoryHandler(db *gorm.DB) http.HandlerFunc {
 		recommendations := ""
 
 		if len(surveys) > 0 {
-			var totalMood, totalAnxiety, totalControl int
-			for _, s := range surveys {
-				totalMood += s.MoodAnswer
-				totalAnxiety += s.AnxietyAnswer
-				totalControl += s.ControlAnswer
-			}
-			count := len(surveys)
-			avgMood := float64(totalMood) / float64(count)
-			avgAnxiety := float64(totalAnxiety) / float64(count)
-			avgControl := float64(totalControl) / float64(count)
+			now := time.Now()
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
-			details := buildSurveyDetails(surveys)
+			var cached models.SurveyRecommendation
+			cacheErr := db.Where("user_id = ? AND date = ?", ctxUser.UserID, today).
+				First(&cached).Error
 
-			summaryPrompt := fmt.Sprintf(
-				"Пользователь проходил ежедневные опросы о своём состоянии. "+
-					"Каждый показатель оценивается по шкале от 1 до 3 (1 — плохо/низко, 2 — нейтрально/средне, 3 — хорошо/высоко).\n\n"+
-					"Статистика за последние %d опросов:\n"+
-					"- Среднее настроение: %.2f/3\n"+
-					"- Средний уровень тревожности: %.2f/3\n"+
-					"- Средний уровень ощущения контроля над жизнью: %.2f/3\n\n"+
-					"Детальная история опросов:\n%s\n"+
-					"Дай краткое резюме о психологическом состоянии пользователя за последний месяц.",
-				count, avgMood, avgAnxiety, avgControl, details,
-			)
+			if cacheErr == nil {
+				// Используем кэшированные рекомендации
+				summary = cached.Summary
+				recommendations = cached.Recommendations
+			} else {
+				// Генерируем новые рекомендации через LLM
+				var totalMood, totalAnxiety, totalControl int
+				for _, s := range surveys {
+					totalMood += s.MoodAnswer
+					totalAnxiety += s.AnxietyAnswer
+					totalControl += s.ControlAnswer
+				}
+				count := len(surveys)
+				avgMood := float64(totalMood) / float64(count)
+				avgAnxiety := float64(totalAnxiety) / float64(count)
+				avgControl := float64(totalControl) / float64(count)
 
-			var err error
-			summary, err = llmService.GetLLMResponse("", summaryPrompt)
-			if err != nil {
-				log.Printf("LLM summary error: %v", err)
-				summary = "Не удалось сформировать резюме."
-			}
+				details := buildSurveyDetails(surveys)
 
-			recPrompt := fmt.Sprintf(
-				"Пользователь проходил ежедневные опросы о своём состоянии (шкала 1–3). "+
-					"Среднее настроение: %.2f/3, средняя тревожность: %.2f/3, средний контроль: %.2f/3 за %d опросов за последний месяц.\n"+
-					"Дай конкретные практические рекомендации, как улучшить психологическое состояние пользователя.",
-				avgMood, avgAnxiety, avgControl, count,
-			)
+				summaryPrompt := fmt.Sprintf(
+					"Пользователь проходил ежедневные опросы о своём состоянии. "+
+						"Каждый показатель оценивается по шкале от 1 до 3 (1 — плохо/низко, 2 — нейтрально/средне, 3 — хорошо/высоко).\n\n"+
+						"Статистика за последние %d опросов:\n"+
+						"- Среднее настроение: %.2f/3\n"+
+						"- Средний уровень тревожности: %.2f/3\n"+
+						"- Средний уровень ощущения контроля над жизнью: %.2f/3\n\n"+
+						"Детальная история опросов:\n%s\n"+
+						"Дай краткое резюме о психологическом состоянии пользователя за последний месяц.",
+					count, avgMood, avgAnxiety, avgControl, details,
+				)
 
-			recommendations, err = llmService.GetLLMResponse("", recPrompt)
-			if err != nil {
-				log.Printf("LLM recommendations error: %v", err)
-				recommendations = "Не удалось сформировать рекомендации."
+				var err error
+				summary, err = llmService.GetLLMResponse("", summaryPrompt)
+				if err != nil {
+					log.Printf("LLM summary error: %v", err)
+					summary = "Не удалось сформировать резюме."
+				}
+
+				recPrompt := fmt.Sprintf(
+					"Пользователь проходил ежедневные опросы о своём состоянии (шкала 1–3). "+
+						"Среднее настроение: %.2f/3, средняя тревожность: %.2f/3, средний контроль: %.2f/3 за %d опросов за последний месяц.\n"+
+						"Дай конкретные практические рекомендации, как улучшить психологическое состояние пользователя.",
+					avgMood, avgAnxiety, avgControl, count,
+				)
+
+				recommendations, err = llmService.GetLLMResponse("", recPrompt)
+				if err != nil {
+					log.Printf("LLM recommendations error: %v", err)
+					recommendations = "Не удалось сформировать рекомендации."
+				}
+
+				// Сохраняем результат в кэш
+				rec := models.SurveyRecommendation{
+					UserID:          ctxUser.UserID,
+					Date:            today,
+					Summary:         summary,
+					Recommendations: recommendations,
+				}
+				if saveErr := db.Create(&rec).Error; saveErr != nil {
+					log.Printf("Failed to cache survey recommendations: %v", saveErr)
+				}
 			}
 		}
 

@@ -104,6 +104,19 @@ type DailySurvey struct {
 	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
 }
 
+// SurveyRecommendation хранит кэшированные рекомендации LLM для пользователя на конкретную дату
+type SurveyRecommendation struct {
+	RecommendationID uint      `gorm:"primaryKey;column:recommendation_id;autoIncrement"`
+	UserID           uint      `gorm:"column:user_id;not null;index"`
+	Date             time.Time `gorm:"column:date;type:date;not null"`
+	Summary          string    `gorm:"column:summary;type:text"`
+	Recommendations  string    `gorm:"column:recommendations;type:text"`
+	CreationDatetime time.Time `gorm:"column:creation_datetime;autoCreateTime"`
+
+	// Связи
+	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
+}
+
 // ===================== Хуки шифрования =====================
 
 // encryptField шифрует поле и логирует ошибку, не прерывая операцию.
@@ -193,4 +206,8 @@ func (Session) TableName() string {
 
 func (DailySurvey) TableName() string {
 	return "daily_surveys"
+}
+
+func (SurveyRecommendation) TableName() string {
+	return "survey_recommendations"
 }
