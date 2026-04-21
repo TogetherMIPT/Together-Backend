@@ -117,6 +117,20 @@ type SurveyRecommendation struct {
 	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
 }
 
+// ClientSurvey хранит результат первичного опроса клиента (один на пользователя)
+type ClientSurvey struct {
+	ClientSurveyID   uint      `gorm:"primaryKey;column:client_survey_id;autoIncrement"`
+	UserID           uint      `gorm:"column:user_id;not null;uniqueIndex"`
+	WithPsychologist bool      `gorm:"column:with_psychologist;not null"`
+	TherapyRequest   string    `gorm:"column:therapy_request;type:text"`
+	TherapyApproach  string    `gorm:"column:therapy_approach;type:varchar(255)"`
+	WeeklyMeetings   int       `gorm:"column:weekly_meetings;not null;default:0"`
+	CreationDatetime time.Time `gorm:"column:creation_datetime;autoCreateTime"`
+
+	// Связи
+	User User `gorm:"foreignKey:UserID;references:UserID;constraint:OnDelete:CASCADE"`
+}
+
 // ===================== Хуки шифрования =====================
 
 // encryptField шифрует поле и логирует ошибку, не прерывая операцию.
@@ -210,4 +224,8 @@ func (DailySurvey) TableName() string {
 
 func (SurveyRecommendation) TableName() string {
 	return "survey_recommendations"
+}
+
+func (ClientSurvey) TableName() string {
+	return "client_surveys"
 }
