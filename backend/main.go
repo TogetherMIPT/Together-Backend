@@ -87,6 +87,18 @@ func main() {
 	mux.Handle("/survey/status", withAuth(handlers.SurveyStatusHandler(database.DB)))
 	mux.Handle("/survey/history", withAuth(handlers.SurveyHistoryHandler(database.DB)))
 
+	// Эндпоинт для первичного опроса клиента
+	mux.Handle("/client_survey", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			handlers.ClientSurveyHandler(database.DB)(w, r)
+		case http.MethodGet:
+			handlers.GetClientSurveyHandler(database.DB)(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
 	// Получаем порт из переменной окружения или используем 8080 по умолчанию
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -126,4 +138,6 @@ func logEndpoints() {
 	log.Printf("    POST   /survey              - Submit daily mood survey")
 	log.Printf("    GET    /survey/status       - Check if user completed today's survey")
 	log.Printf("    GET    /survey/history      - Get last month survey history with LLM summary and recommendations")
+	log.Printf("    POST   /client_survey       - Save client onboarding survey")
+	log.Printf("    GET    /client_survey       - Get client onboarding survey")
 }

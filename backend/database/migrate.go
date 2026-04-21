@@ -103,6 +103,15 @@ func createTablesWithoutFKs(db *gorm.DB) error {
 			recommendations TEXT,
 			creation_datetime TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS client_surveys (
+			client_survey_id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL UNIQUE,
+			with_psychologist BOOLEAN NOT NULL,
+			therapy_request TEXT,
+			therapy_approach VARCHAR(255),
+			weekly_meetings SMALLINT NOT NULL DEFAULT 0,
+			creation_datetime TIMESTAMPTZ DEFAULT NOW()
+		)`,
 	}
 
 	for _, tableSQL := range tables {
@@ -148,6 +157,10 @@ func addForeignKeys(db *gorm.DB) error {
 
 		`ALTER TABLE survey_recommendations
 		 ADD CONSTRAINT fk_survey_recommendations_user
+		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
+
+		`ALTER TABLE client_surveys
+		 ADD CONSTRAINT fk_client_surveys_user
 		 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE`,
 	}
 
@@ -213,6 +226,9 @@ func createAdditionalConstraints(db *gorm.DB) error {
 		// Индекс и уникальное ограничение для survey_recommendations
 		`CREATE INDEX IF NOT EXISTS idx_survey_recommendations_user ON survey_recommendations (user_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_recommendations_user_date ON survey_recommendations (user_id, date)`,
+
+		// Индекс для client_surveys по user_id
+		`CREATE INDEX IF NOT EXISTS idx_client_surveys_user ON client_surveys (user_id)`,
 	}
 
 	for _, indexSQL := range indexes {
@@ -231,6 +247,7 @@ func DropTables(db *gorm.DB) error {
 
 	// Удаляем таблицы в обратном порядке зависимостей
 	tables := []string{
+		"client_surveys",
 		"survey_recommendations",
 		"daily_surveys",
 		"messages",
