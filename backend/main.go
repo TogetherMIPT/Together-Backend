@@ -107,7 +107,8 @@ func main() {
 
 	// Оборачиваем весь роутер в CORS + HTTPS redirect middleware.
 	// TLS-терминация выполняется на уровне reverse proxy (nginx/traefik).
-	handler := middleware.CORSMiddleware(middleware.HTTPSRedirectMiddleware(mux))
+	handler := middleware.CORSMiddleware(mux) // для корректной работы на удаленном сервере
+	//handler := middleware.CORSMiddleware(middleware.HTTPSRedirectMiddleware(mux))
 
 	addr := ":" + port
 	log.Printf("Starting HTTP server on %s", addr)
