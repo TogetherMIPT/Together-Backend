@@ -138,7 +138,7 @@ type SurveyHistoryResponse struct {
 func sanitizeLLMResponse(text string) string {
 	// Удаляем прямые вопросы (упрощённая эвристика)
 	questionPatterns := []string{
-		`?\s*`, // вопросительный знак в конце
+		`\?\s*`, // вопросительный знак в конце
 		`(?i)хочешь обсудить`,
 		`(?i)давай разберём`,
 		`(?i)расскажи подробнее`,
