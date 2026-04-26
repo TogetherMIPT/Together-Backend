@@ -1,4 +1,4 @@
--- Seed script: generates 129 test users.
+-- Seed script: generates 187 test users.
 --
 -- NOTE: name/email/country/city/gender are stored as plain text (not AES-256-GCM encrypted),
 -- which is intentional for seed data. The app's Decrypt() function falls back to returning
@@ -18,4 +18,4 @@ SELECT
     CASE WHEN i % 3 = 0 THEN 'male' WHEN i % 3 = 1 THEN 'female' ELSE '' END,
     DATE '1990-01-01' + ((i * 97) % 10950) * INTERVAL '1 day',
     NOW()
-FROM generate_series(1, 129) AS s(i);
+FROM generate_series(1, 187) AS s(i);
