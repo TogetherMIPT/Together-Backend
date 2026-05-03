@@ -56,9 +56,11 @@ jobs:
     - name: Wait for Backend to be Ready
       run: |
         cd backend
-        echo "Ожидание запуска backend API..."
+        echo "Ожидаем запуск backend API..."
         for i in {1..30}; do
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${{ vars.APP_PORT }}/ 2>/dev/null || echo "000")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${{ vars.APP_PORT }}/register" -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"login":"check@test.ru","password":"Check123!","name":"check","email":"check@test.ru"}' 2>/dev/null || echo "000")
           if [[ "$STATUS" != "000" ]]; then
             echo "Backend доступен (HTTP $STATUS)"
             break
@@ -66,7 +68,7 @@ jobs:
           sleep 2
         done
         if [[ "$STATUS" == "000" ]]; then
-          echo "Backend не запустился в течение 60с. Логи:"
+          echo "Backend не запустился. Логи:"
           docker compose logs backend
           exit 1
         fi
@@ -94,40 +96,53 @@ jobs:
 
         echo "Запуск тестов API..."
 
-        # 1. Регистрация
+        # 1. Регистрация нового пользователя
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/register" \
           -H "Content-Type: application/json" \
-          -d '{"login":"ci_test@example.com","password":"SecurePass123!","name":"ci_user", "email":"ci_test@example.com"}')
-        check "201" "$STATUS" "POST /register"
+          -d '{"login":"ci_test","password":"CiPass123!","name":"CI Test","email":"ci@test.ru"}')
+        check "200" "$STATUS" "POST /register"
 
-        # 2. Логин и извлечение токена
+        # 2. Логин и получение токена
         LOGIN_RESP=$(curl -s -X POST "$API_URL/login" \
           -H "Content-Type: application/json" \
-          -d '{"login":"ci_test@example.com","password":"SecurePass123!"}')
-        # Адаптируйте ключи под ваш формат ответа
-        TOKEN=$(echo "$LOGIN_RESP" | jq -r '.token' 2>/dev/null)
+          -d '{"login":"ci_test","password":"CiPass123!"}')
+        TOKEN=$(echo "$LOGIN_RESP" | jq -r '.token // empty' 2>/dev/null)
 
         if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
           echo "PASS: POST /login (токен получен)"
           PASS=$((PASS+1))
-          # Если используется не Bearer, измените строку ниже
           AUTH_HEADER="Authorization: $TOKEN"
         else
-          echo "FAIL: POST /login (токен не найден в ответе)"
+          echo "FAIL: POST /login (токен не найден). Ответ: $LOGIN_RESP"
           FAIL=$((FAIL+1))
         fi
 
-        # 3. Защищённый эндпоинт (с валидным токеном)
+        # 3. Создание чата (защищённый эндпоинт)
+        if [[ -n "$AUTH_HEADER" ]]; then
+          # (user_id=1 в тестовой среде)
+          CHAT_RESP=$(curl -s -X POST "$API_URL/chat/1" \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER")
+          CHAT_STATUS=$(echo "$CHAT_RESP" | jq -r '.chat_id // empty' 2>/dev/null)
+          if [[ -n "$CHAT_STATUS" && "$CHAT_STATUS" != "null" ]]; then
+            echo "PASS: POST /chat/{userId}"
+            PASS=$((PASS+1))
+          else
+            echo "FAIL: POST /chat/{userId}. Ответ: $CHAT_RESP"
+            FAIL=$((FAIL+1))
+          fi
+
+        # 4. Защищённый эндпоинт (с валидным токеном)
         if [[ -n "$AUTH_HEADER" ]]; then
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status" -H "$AUTH_HEADER")
           check "200" "$STATUS" "GET /survey/status (авторизован)"
 
-          # 4. Защищённый эндпоинт (без токена)
+          # 5. Защищённый эндпоинт (без токена)
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status")
           check "401" "$STATUS" "GET /survey/status (без авторизации)"
         fi
 
-        # 5. Выход
+        # 6. Выход
         if [[ -n "$AUTH_HEADER" ]]; then
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/logout" -H "$AUTH_HEADER")
           check "200" "$STATUS" "POST /logout"
