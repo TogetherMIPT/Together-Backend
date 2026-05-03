@@ -123,7 +123,7 @@ jobs:
         # 2. Логин
         LOGIN_RESP=$(curl -s -X POST "$API_URL/login" \
           -H "Content-Type: application/json" \
-          -d "{\"login\":\"$TEST_USER\",\"password\":\"CiPass123!\"}")
+          -d "{\"login\":\"ci@test.ru\",\"password\":\"CiPass123!\"}")
         echo "Ответ /login: $LOGIN_RESP"
 
         TOKEN=$(echo "$LOGIN_RESP" | jq -r '.token // empty' 2>/dev/null)
