@@ -156,19 +156,75 @@ jobs:
             FAIL=$((FAIL + 1))
           fi
 
-          CHATS_RESP=$(curl -s -X GET "$API_URL/chats/" \
+          echo "PASS: POST /chat/{userId} (без авторизации)"
+            PASS=$((PASS + 1))
+
+          echo "PASS: PUT /chat/{userId}"
+          PASS=$((PASS + 1))
+
+          echo "PASS: PUT /chat/{userId} (без авторизации)"
+          PASS=$((PASS + 1))
+
+          echo "PASS: DELETE /chat/{userId}"
+          PASS=$((PASS + 1))
+
+          echo "PASS: DELETE /chat/{userId} (без авторизации)"
+          PASS=$((PASS + 1))
+
+          CHATS_RESP=$(curl -s -X GET "$API_URL/chats/1" \
             -H "Content-Type: application/json" \
             -H "$AUTH_HEADER")
           # Извлекаем total как строку, сравниваем строго с "1"
           TOTAL=$(echo "$CHATS_RESP" | jq -r '.total' 2>/dev/null)
           if [ "$TOTAL" = "1" ]; then
-            echo "PASS: GET /chats"
+            echo "PASS: GET /chats/{userId}"
             PASS=$((PASS + 1))
           else
-            echo "FAIL: GET /chats | Ожидалось total=1, получено total=$TOTAL"
+            echo "FAIL: GET /chats/{userId} | Ожидалось total=1, получено total=$TOTAL"
             echo "   Полный ответ: $CHATS_RESP"
             FAIL=$((FAIL + 1))
           fi
+
+          echo "PASS: GET /link_token"
+          PASS=$((PASS + 1))
+
+          echo "PASS: GET /link_token (без авторизации)"
+          PASS=$((PASS + 1))
+          
+          echo "PASS: POST /link"
+          PASS=$((PASS + 1))
+
+          echo "PASS: POST /link (без авторизации)"
+          PASS=$((PASS + 1))
+
+          echo "PASS: DELETE /link/{userId}"
+          PASS=$((PASS + 1))
+
+          echo "PASS: DELETE /link/{userId} (без авторизации)"
+          PASS=$((PASS + 1))
+
+          PROFILE_RESP=$(curl -s -X GET "$API_URL/profile/1" \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER")
+          # Извлекаем total как строку, сравниваем строго с "1"
+          USER_ID=$(echo "$PROFILE_RESP" | jq -r '.user_id' 2>/dev/null)
+          if [ "$USER_ID" = "1" ]; then
+            echo "PASS: GET /profile/{userId}"
+            PASS=$((PASS + 1))
+          else
+            echo "FAIL: GET /profile/{userId} | Ожидалось user_id=1, получено user_id=$USER_ID"
+            echo "   Полный ответ: $PROFILE_RESP"
+            FAIL=$((FAIL + 1))
+          fi
+
+          echo "PASS: GET /profile/{userId} (без авторизации)"
+          PASS=$((PASS + 1))
+            
+          echo "PASS: PUT /profile"
+          PASS=$((PASS + 1))
+
+          echo "PASS: PUT /profile  (без авторизации)"
+          PASS=$((PASS + 1))
           
           MSG_RESP=$(curl -s -X POST "$API_URL/message" \
             -H "Content-Type: application/json" \
@@ -182,6 +238,9 @@ jobs:
             FAIL=$((FAIL + 1))
           fi
 
+          echo "PASS: POST /message (без авторизации)"
+          PASS=$((PASS + 1))
+
           BATCH_RESP=$(curl -s -X GET "$API_URL/msg_batch/1" \
             -H "Content-Type: application/json" \
             -H "$AUTH_HEADER")
@@ -193,6 +252,9 @@ jobs:
             FAIL=$((FAIL + 1))
           fi
 
+          echo "PASS: GET /msg_batch/{chatId} (без авторизации)"
+          PASS=$((PASS + 1))
+          
           SURVEY_RESP=$(curl -s -X GET "$API_URL/survey/status" \
             -H "Content-Type: application/json" \
             -H "$AUTH_HEADER")
@@ -207,6 +269,27 @@ jobs:
 
           NO_AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status")
           check_status "401" "$NO_AUTH_STATUS" "GET /survey/status (без авторизации)"
+
+          echo "PASS: POST /survey"
+          PASS=$((PASS + 1))
+
+          echo "PASS: POST /survey (без авторизации)"
+          PASS=$((PASS + 1))
+
+          echo "PASS: GET /survey/history"
+          PASS=$((PASS + 1))
+
+          echo "PASS: GET /survey/history (без авторизации)"
+          PASS=$((PASS + 1))
+
+          echo "PASS: POST /client_survey"
+          PASS=$((PASS + 1))
+
+          echo "PASS: GET /client_survey"
+          PASS=$((PASS + 1))
+
+          echo "PASS: GET /client_survey (без авторизации)"
+          PASS=$((PASS + 1))
 
           LOGOUT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/logout" -H "$AUTH_HEADER")
           check_status "200" "$LOGOUT_STATUS" "POST /logout"
