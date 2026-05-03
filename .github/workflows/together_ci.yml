@@ -53,25 +53,28 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
         MODEL_NAME: ${{ vars.MODEL_NAME }}
 
-    - name: Wait for Backend to be Ready
+    - name: Wait for Backend Health
+      timeout-minutes: 2
       run: |
         cd backend
-        echo "Ожидаем запуск backend API..."
-        for i in {1..30}; do
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${{ vars.APP_PORT }}/register" -X POST \
+        echo "Проверка доступности API..."
+        
+        # Пробуем 40 раз с интервалом 3с = максимум 2 минуты
+        for i in $(seq 1 40); do
+          # Пингуем через docker compose exec, чтобы избежать проблем с сетью
+          if docker compose exec -T backend curl -sf http://localhost:${{ vars.APP_PORT }}/register -X POST \
             -H "Content-Type: application/json" \
-            -d '{"login":"check@test.ru","password":"Check123!","name":"check","email":"check@test.ru"}' 2>/dev/null || echo "000")
-          if [[ "$STATUS" != "000" ]]; then
-            echo "Backend доступен (HTTP $STATUS)"
-            break
+            -d '{"login":"hc","password":"Hc123!","name":"hc","email":"hc@t.t"}' >/dev/null 2>&1; then
+            echo "Backend готов к тестам (попытка $i)"
+            exit 0
           fi
-          sleep 2
+          echo "Попытка $i: ожидание запуска..."
+          sleep 3
         done
-        if [[ "$STATUS" == "000" ]]; then
-          echo "Backend не запустился. Логи:"
-          docker compose logs backend
-          exit 1
-        fi
+        
+        echo "Backend не ответил за 2 минуты. Логи:"
+        docker compose logs backend --tail=50
+        exit 1
 
     - name: Run API Tests
       timeout-minutes: 5
