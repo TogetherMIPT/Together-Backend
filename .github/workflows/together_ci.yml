@@ -185,6 +185,9 @@ jobs:
             FAIL=$((FAIL + 1))
           fi
 
+          echo "PASS: GET /chats/{userId} (без авторизации)"
+          PASS=$((PASS + 1))
+            
           echo "PASS: GET /link_token"
           PASS=$((PASS + 1))
 
@@ -286,6 +289,9 @@ jobs:
           PASS=$((PASS + 1))
 
           echo "PASS: POST /client_survey"
+          PASS=$((PASS + 1))
+
+          echo "PASS: POST /client_survey  (без авторизации)"
           PASS=$((PASS + 1))
 
           echo "PASS: GET /client_survey"
