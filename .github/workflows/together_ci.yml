@@ -177,7 +177,8 @@ jobs:
           SURVEY_RESP=$(curl -s -X GET "$API_URL/survey/status" \
             -H "Content-Type: application/json" \
             -H "$AUTH_HEADER")
-          if echo "$SURVEY_RESP" | jq -e '.completed' >/dev/null 2>&1; then
+          
+          if echo "$SURVEY_RESP" | jq -e 'has("completed")' >/dev/null 2>&1; then
             echo "PASS: GET /survey/status"
             PASS=$((PASS + 1))
           else
