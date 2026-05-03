@@ -151,28 +151,42 @@ jobs:
             FAIL=$((FAIL + 1))
           fi
 
-          # MSG_RESP=$(curl -s -X POST "$API_URL/message" \
-          #   -H "Content-Type: application/json" \
-          #   -H "$AUTH_HEADER" \
-          #   -d '{"chat_id":1,"message":"CI test"}')
-          # if echo "$MSG_RESP" | jq -e '.response' >/dev/null 2>&1; then
-          #   echo "PASS: POST /message"
-          #   PASS=$((PASS + 1))
-          # else
-          #   echo "FAIL: POST /message | Ответ: $MSG_RESP"
-          #   FAIL=$((FAIL + 1))
-          # fi
+          CHATS_RESP=$(curl -s -X GET "$API_URL/chats" \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER")
+          # Извлекаем total как строку, сравниваем строго с "1"
+          TOTAL=$(echo "$CHATS_RESP" | jq -r '.total' 2>/dev/null)
+          if [ "$TOTAL" = "1" ]; then
+            echo "PASS: GET /chats"
+            PASS=$((PASS + 1))
+          else
+            echo "FAIL: GET /chats | Ожидалось total=1, получено total=$TOTAL"
+            echo "   Полный ответ: $CHATS_RESP"
+            FAIL=$((FAIL + 1))
+          fi
+          
+          MSG_RESP=$(curl -s -X POST "$API_URL/message" \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER" \
+            -d '{"chat_id":1,"message":"CI test"}')
+          if echo "$MSG_RESP" | jq -e '.response' >/dev/null 2>&1; then
+            echo "PASS: POST /message"
+            PASS=$((PASS + 1))
+          else
+            echo "FAIL: POST /message | Ответ: $MSG_RESP"
+            FAIL=$((FAIL + 1))
+          fi
 
-          # BATCH_RESP=$(curl -s -X GET "$API_URL/msg_batch/1" \
-          #   -H "Content-Type: application/json" \
-          #   -H "$AUTH_HEADER")
-          # if echo "$BATCH_RESP" | jq -e '.messages' >/dev/null 2>&1; then
-          #   echo "PASS: GET /msg_batch/{chatId}"
-          #   PASS=$((PASS + 1))
-          # else
-          #   echo "FAIL: GET /msg_batch/{chatId} | Ответ: $BATCH_RESP"
-          #   FAIL=$((FAIL + 1))
-          # fi
+          BATCH_RESP=$(curl -s -X GET "$API_URL/msg_batch/1" \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER")
+          if echo "$BATCH_RESP" | jq -e '.messages' >/dev/null 2>&1; then
+            echo "PASS: GET /msg_batch/{chatId}"
+            PASS=$((PASS + 1))
+          else
+            echo "FAIL: GET /msg_batch/{chatId} | Ответ: $BATCH_RESP"
+            FAIL=$((FAIL + 1))
+          fi
 
           SURVEY_RESP=$(curl -s -X GET "$API_URL/survey/status" \
             -H "Content-Type: application/json" \
