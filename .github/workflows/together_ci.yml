@@ -52,6 +52,11 @@ jobs:
         LOG_LEVEL: ${{ vars.LOG_LEVEL }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
         MODEL_NAME: ${{ vars.MODEL_NAME }}
+        USE_OPENROUTER: ${{ vars.USE_OPENROUTER }}
+        USE_GIGACHAT: ${{ vars.USE_GIGACHAT }}
+        GIGACHAT_AUTH_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}
+        GIGACHAT_MODEL: ${{ vars.GIGACHAT_MODEL }}
+        GIGACHAT_SCOPE: ${{ vars.GIGACHAT_SCOPE }}
         
     - name: Wait for Backend Health
       timeout-minutes: 2
@@ -151,7 +156,7 @@ jobs:
             FAIL=$((FAIL + 1))
           fi
 
-          CHATS_RESP=$(curl -s -X GET "$API_URL/chats" \
+          CHATS_RESP=$(curl -s -X GET "$API_URL/chats/" \
             -H "Content-Type: application/json" \
             -H "$AUTH_HEADER")
           # Извлекаем total как строку, сравниваем строго с "1"
