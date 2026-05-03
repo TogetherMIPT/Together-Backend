@@ -58,13 +58,14 @@ jobs:
       run: |
         cd backend
         echo "Проверка доступности API..."
+        docker ps
         
         # Пробуем 40 раз с интервалом 3с = максимум 2 минуты
         for i in $(seq 1 40); do
           # Пингуем через docker compose exec, чтобы избежать проблем с сетью
-          if docker compose exec -T backend curl -sf http://localhost:${{ vars.APP_PORT }}/register -X POST \
+          if docker compose exec -T go_backend curl -sf http://localhost:${{ vars.APP_PORT }}/register -X POST \
             -H "Content-Type: application/json" \
-            -d '{"login":"hc","password":"Hc123!","name":"hc","email":"hc@t.t"}' >/dev/null 2>&1; then
+            -d '{"login":"check@mail.ru","password":"CheckCI123!","name":"check","email":"check@mail.ru"}' >/dev/null 2>&1; then
             echo "Backend готов к тестам (попытка $i)"
             exit 0
           fi
@@ -73,7 +74,7 @@ jobs:
         done
         
         echo "Backend не ответил за 2 минуты. Логи:"
-        docker compose logs backend --tail=50
+        docker compose logs go_backend --tail=50
         exit 1
 
     - name: Run API Tests
