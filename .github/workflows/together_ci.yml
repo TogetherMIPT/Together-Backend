@@ -57,40 +57,39 @@ jobs:
       timeout-minutes: 2
       run: |
         cd backend
-        docker ps
         echo "Проверка доступности API на порту ${{ vars.APP_PORT }}..."
-        
-        # Пробуем 40 раз с интервалом 3с = максимум 2 минуты
+
+        # Отключаем аварийный выход при ошибке (по умолчанию в GHA включён set -e)
+        set +e
+
         for i in $(seq 1 40); do
-          # curl напрямую в проброшенный порт (проще и надёжнее)
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:${{ vars.APP_PORT }}/register" \
+          # curl с таймаутами + защита от падения скрипта
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --connect-timeout 2 --max-time 5 \
+            -X POST "http://localhost:${{ vars.APP_PORT }}/register" \
             -H "Content-Type: application/json" \
-            -d '{"login":"check@mail.ru","password":"Check123!","name":"check","email":"check@mail.ru"}' 2>&1)
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          
-          # 200 = OK, 400/409 = сервер жив (ошибка валидации/конфликт), 000 = нет соединения
-          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "409" ]; then
-            echo "Backend отвечает (HTTP $HTTP_CODE) на попытке $i"
+            -d '{"login":"check@mail.ru","password":"Check123!","name":"check","email":"check@mail.ru"}' 2>/dev/null || echo "000")
+
+          # Сервер считается "живым", если ответил любым HTTP-кодом (200, 400, 409, 500)
+          if [ "$HTTP_CODE" != "000" ]; then
+            echo "Backend начал отвечать (HTTP $HTTP_CODE) на попытке $i"
             exit 0
           fi
-          
-          # Показываем прогресс каждые 10 попыток
+
+          # Прогресс-лог каждые 10 попыток
           if [ $((i % 10)) -eq 0 ]; then
-            echo "Попытка $i/60... (последний ответ: '$RESPONSE')"
-            echo "Логи backend (последние 10 строк):"
-            docker compose logs go_backend --tail=10
+            echo "Попытка $i/60... (порт пока не отвечает)"
+            echo "Последние 5 строк логов backend:"
+            docker compose logs go_backend --tail=5
           fi
-          sleep 3
+          sleep 2
         done
-        
-        # Если не дождался — выводим полную диагностику
+
         echo "Backend не ответил за 2 минуты!"
         echo "Полный лог backend:"
-        docker compose logs backend
-        echo "Проверка портов:"
+        docker compose logs go_backend
+        echo "Состояние контейнеров:"
         docker compose ps
-        netstat -tlnp 2>/dev/null | grep 8080 || ss -tlnp | grep 8080 || echo "Порт 8080 не слушается"
         exit 1
 
     - name: Run API Tests
