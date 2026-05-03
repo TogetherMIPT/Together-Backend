@@ -53,6 +53,93 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
         MODEL_NAME: ${{ vars.MODEL_NAME }}
 
+    - name: Wait for Backend to be Ready
+      run: |
+        cd backend
+        echo "Ожидание запуска backend API..."
+        for i in {1..30}; do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${{ vars.APP_PORT }}/ 2>/dev/null || echo "000")
+          if [[ "$STATUS" != "000" ]]; then
+            echo "Backend доступен (HTTP $STATUS)"
+            break
+          fi
+          sleep 2
+        done
+        if [[ "$STATUS" == "000" ]]; then
+          echo "Backend не запустился в течение 60с. Логи:"
+          docker compose logs backend
+          exit 1
+        fi
+
+    - name: Run API Tests
+      timeout-minutes: 5
+      run: |
+        cd backend
+        set +e # Отключаем exit on error, чтобы контролировать статусы вручную
+        API_URL="http://localhost:${{ vars.APP_PORT }}"
+        PASS=0
+        FAIL=0
+
+        check() {
+          local expected=$1 actual=$2 msg=$3
+          actual=$(echo "$actual" | tr -d '[:space:]')
+          if [[ "$actual" == "$expected" ]]; then
+            echo "PASS: $msg"
+            PASS=$((PASS+1))
+          else
+            echo "FAIL: $msg (Ожидалось: $expected, Получено: $actual)"
+            FAIL=$((FAIL+1))
+          fi
+        }
+
+        echo "Запуск тестов API..."
+
+        # 1. Регистрация
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/register" \
+          -H "Content-Type: application/json" \
+          -d '{"login":"ci_test@example.com","password":"SecurePass123!","name":"ci_user", "email":"ci_test@example.com"}')
+        check "201" "$STATUS" "POST /register"
+
+        # 2. Логин и извлечение токена
+        LOGIN_RESP=$(curl -s -X POST "$API_URL/login" \
+          -H "Content-Type: application/json" \
+          -d '{"login":"ci_test@example.com","password":"SecurePass123!"}')
+        # Адаптируйте ключи под ваш формат ответа
+        TOKEN=$(echo "$LOGIN_RESP" | jq -r '.token' 2>/dev/null)
+
+        if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
+          echo "PASS: POST /login (токен получен)"
+          PASS=$((PASS+1))
+          # Если используется не Bearer, измените строку ниже
+          AUTH_HEADER="Authorization: $TOKEN"
+        else
+          echo "FAIL: POST /login (токен не найден в ответе)"
+          FAIL=$((FAIL+1))
+        fi
+
+        # 3. Защищённый эндпоинт (с валидным токеном)
+        if [[ -n "$AUTH_HEADER" ]]; then
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status" -H "$AUTH_HEADER")
+          check "200" "$STATUS" "GET /survey/status (авторизован)"
+
+          # 4. Защищённый эндпоинт (без токена)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status")
+          check "401" "$STATUS" "GET /survey/status (без авторизации)"
+        fi
+
+        # 5. Выход
+        if [[ -n "$AUTH_HEADER" ]]; then
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/logout" -H "$AUTH_HEADER")
+          check "200" "$STATUS" "POST /logout"
+        fi
+
+        echo "Итог: $PASS тестов пройдено, $FAIL тестов упало"
+        if [[ $FAIL -gt 0 ]]; then
+          echo "Тесты API не пройдены. Запуск CI остановлен."
+          exit 1
+        fi
+        echo "Все тесты API успешно пройдены!"
+
     - name: Login to Docker Hub
       uses: docker/login-action@v2
       with:
