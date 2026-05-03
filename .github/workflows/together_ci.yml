@@ -57,24 +57,40 @@ jobs:
       timeout-minutes: 2
       run: |
         cd backend
-        echo "Проверка доступности API..."
         docker ps
+        echo "Проверка доступности API на порту ${{ vars.APP_PORT }}..."
         
         # Пробуем 40 раз с интервалом 3с = максимум 2 минуты
         for i in $(seq 1 40); do
-          # Пингуем через docker compose exec, чтобы избежать проблем с сетью
-          if docker compose exec -T go_backend curl -sf http://localhost:${{ vars.APP_PORT }}/register -X POST \
+          # curl напрямую в проброшенный порт (проще и надёжнее)
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:${{ vars.APP_PORT }}/register" \
             -H "Content-Type: application/json" \
-            -d '{"login":"check@mail.ru","password":"CheckCI123!","name":"check","email":"check@mail.ru"}' >/dev/null 2>&1; then
-            echo "Backend готов к тестам (попытка $i)"
+            -d '{"login":"check@mail.ru","password":"Check123!","name":"check","email":"check@mail.ru"}' 2>&1)
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          
+          # 200 = OK, 400/409 = сервер жив (ошибка валидации/конфликт), 000 = нет соединения
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "409" ]; then
+            echo "Backend отвечает (HTTP $HTTP_CODE) на попытке $i"
             exit 0
           fi
-          echo "Попытка $i: ожидание запуска..."
+          
+          # Показываем прогресс каждые 10 попыток
+          if [ $((i % 10)) -eq 0 ]; then
+            echo "Попытка $i/60... (последний ответ: '$RESPONSE')"
+            echo "Логи backend (последние 10 строк):"
+            docker compose logs go_backend --tail=10
+          fi
           sleep 3
         done
         
-        echo "Backend не ответил за 2 минуты. Логи:"
-        docker compose logs go_backend --tail=50
+        # Если не дождался — выводим полную диагностику
+        echo "Backend не ответил за 2 минуты!"
+        echo "Полный лог backend:"
+        docker compose logs backend
+        echo "Проверка портов:"
+        docker compose ps
+        netstat -tlnp 2>/dev/null | grep 8080 || ss -tlnp | grep 8080 || echo "Порт 8080 не слушается"
         exit 1
 
     - name: Run API Tests
