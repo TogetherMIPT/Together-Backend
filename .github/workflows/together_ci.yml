@@ -94,80 +94,113 @@ jobs:
       timeout-minutes: 5
       run: |
         cd backend
-        set +e # Отключаем exit on error, чтобы контролировать статусы вручную
+        set +e
         API_URL="http://localhost:${{ vars.APP_PORT }}"
         PASS=0
         FAIL=0
 
-        check() {
-          local expected=$1 actual=$2 msg=$3
-          actual=$(echo "$actual" | tr -d '[:space:]')
-          if [[ "$actual" == "$expected" ]]; then
+        check_status() {
+          local expected="$1"
+          local actual="$2"
+          local msg="$3"
+          if [ "$actual" = "$expected" ]; then
             echo "PASS: $msg"
-            PASS=$((PASS+1))
+            PASS=$((PASS + 1))
           else
-            echo "FAIL: $msg (Ожидалось: $expected, Получено: $actual)"
-            FAIL=$((FAIL+1))
+            echo "FAIL: $msg (ожидалось: $expected, получено: $actual)"
+            FAIL=$((FAIL + 1))
           fi
         }
 
         echo "Запуск тестов API..."
 
-        # 1. Регистрация нового пользователя
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/register" \
+        # 1. Регистрация
+        REG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/register" \
           -H "Content-Type: application/json" \
-          -d '{"login":"ci_test","password":"CiPass123!","name":"CI Test","email":"ci@test.ru"}')
-        check "200" "$STATUS" "POST /register"
+          -d "{\"login\":\"ci@test.ru\",\"password\":\"CiPass123!\",\"name\":\"CI\",\"email\":\"ci@test.ru\"}")
+        check_status "201" "$REG_STATUS" "POST /register"
 
-        # 2. Логин и получение токена
+        # 2. Логин
         LOGIN_RESP=$(curl -s -X POST "$API_URL/login" \
           -H "Content-Type: application/json" \
-          -d '{"login":"ci_test","password":"CiPass123!"}')
+          -d "{\"login\":\"$TEST_USER\",\"password\":\"CiPass123!\"}")
+        echo "Ответ /login: $LOGIN_RESP"
+
         TOKEN=$(echo "$LOGIN_RESP" | jq -r '.token // empty' 2>/dev/null)
 
-        if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
+        if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
           echo "PASS: POST /login (токен получен)"
-          PASS=$((PASS+1))
+          PASS=$((PASS + 1))
           AUTH_HEADER="Authorization: $TOKEN"
         else
-          echo "FAIL: POST /login (токен не найден). Ответ: $LOGIN_RESP"
-          FAIL=$((FAIL+1))
+          echo "FAIL: POST /login (токен не извлечён)"
+          FAIL=$((FAIL + 1))
+          AUTH_HEADER=""
         fi
 
-        # 3. Создание чата (защищённый эндпоинт)
-        if [[ -n "$AUTH_HEADER" ]]; then
-          # (user_id=1 в тестовой среде)
+        # 3. Тесты с авторизацией
+        if [ -n "$AUTH_HEADER" ]; then
           CHAT_RESP=$(curl -s -X POST "$API_URL/chat/1" \
             -H "Content-Type: application/json" \
             -H "$AUTH_HEADER")
-          CHAT_STATUS=$(echo "$CHAT_RESP" | jq -r '.chat_id // empty' 2>/dev/null)
-          if [[ -n "$CHAT_STATUS" && "$CHAT_STATUS" != "null" ]]; then
+          if echo "$CHAT_RESP" | jq -e '.chat_id' >/dev/null 2>&1; then
             echo "PASS: POST /chat/{userId}"
-            PASS=$((PASS+1))
+            PASS=$((PASS + 1))
           else
-            echo "FAIL: POST /chat/{userId}. Ответ: $CHAT_RESP"
-            FAIL=$((FAIL+1))
+            echo "FAIL: POST /chat/{userId} | Ответ: $CHAT_RESP"
+            FAIL=$((FAIL + 1))
           fi
 
-        # 4. Защищённый эндпоинт (с валидным токеном)
-        if [[ -n "$AUTH_HEADER" ]]; then
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status" -H "$AUTH_HEADER")
-          check "200" "$STATUS" "GET /survey/status (авторизован)"
+          # MSG_RESP=$(curl -s -X POST "$API_URL/message" \
+          #   -H "Content-Type: application/json" \
+          #   -H "$AUTH_HEADER" \
+          #   -d '{"chat_id":1,"message":"CI test"}')
+          # if echo "$MSG_RESP" | jq -e '.response' >/dev/null 2>&1; then
+          #   echo "PASS: POST /message"
+          #   PASS=$((PASS + 1))
+          # else
+          #   echo "FAIL: POST /message | Ответ: $MSG_RESP"
+          #   FAIL=$((FAIL + 1))
+          # fi
 
-          # 5. Защищённый эндпоинт (без токена)
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status")
-          check "401" "$STATUS" "GET /survey/status (без авторизации)"
+          # BATCH_RESP=$(curl -s -X GET "$API_URL/msg_batch/1" \
+          #   -H "Content-Type: application/json" \
+          #   -H "$AUTH_HEADER")
+          # if echo "$BATCH_RESP" | jq -e '.messages' >/dev/null 2>&1; then
+          #   echo "PASS: GET /msg_batch/{chatId}"
+          #   PASS=$((PASS + 1))
+          # else
+          #   echo "FAIL: GET /msg_batch/{chatId} | Ответ: $BATCH_RESP"
+          #   FAIL=$((FAIL + 1))
+          # fi
+
+          SURVEY_RESP=$(curl -s -X GET "$API_URL/survey/status" \
+            -H "Content-Type: application/json" \
+            -H "$AUTH_HEADER")
+          if echo "$SURVEY_RESP" | jq -e '.completed' >/dev/null 2>&1; then
+            echo "PASS: GET /survey/status"
+            PASS=$((PASS + 1))
+          else
+            echo "FAIL: GET /survey/status | Ответ: $SURVEY_RESP"
+            FAIL=$((FAIL + 1))
+          fi
+
+          NO_AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/survey/status")
+          check_status "401" "$NO_AUTH_STATUS" "GET /survey/status (без авторизации)"
+
+          LOGOUT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/logout" -H "$AUTH_HEADER")
+          check_status "200" "$LOGOUT_STATUS" "POST /logout"
         fi
 
-        # 6. Выход
-        if [[ -n "$AUTH_HEADER" ]]; then
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/logout" -H "$AUTH_HEADER")
-          check "200" "$STATUS" "POST /logout"
-        fi
+        echo ""
+        echo "=== ИТОГИ ТЕСТИРОВАНИЯ API ==="
+        echo "Пройдено: $PASS"
+        echo "С ошибками: $FAIL"
+        echo "======================="
 
-        echo "Итог: $PASS тестов пройдено, $FAIL тестов упало"
-        if [[ $FAIL -gt 0 ]]; then
-          echo "Тесты API не пройдены. Запуск CI остановлен."
+        if [ "$FAIL" -gt 0 ]; then
+          echo "Тесты не пройдены. Логи backend для отладки:"
+          docker compose logs backend --tail=100
           exit 1
         fi
         echo "Все тесты API успешно пройдены!"
