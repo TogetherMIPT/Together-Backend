@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 from huggingface_hub import login
 
+SAMPLE_SIZE = 16
 
 def get_hf_token():
     token = os.getenv('HF_TOKEN')
@@ -58,6 +59,22 @@ def calculate_perplexity(model, tokenizer, text_data, max_length=1024):
             loss = outputs.loss
             losses.append(loss.item())
 
+    perplexity = np.exp(np.mean(losses))
+    return perplexity
+
+
+def calculate_perplexity_batched(model, tokenizer, text_data, batch_size=4, max_length=1024):
+    losses = []
+    for i in range(0, len(text_data), batch_size):
+        batch = text_data[i:i+batch_size]
+        inputs = tokenizer(batch, padding=True, truncation=True, 
+                          max_length=max_length, return_tensors='pt')
+        
+        with torch.no_grad():
+            outputs = model(**inputs, labels=inputs['input_ids'])
+            # loss усредняется по батчу
+            losses.append(outputs.loss.item())
+    
     perplexity = np.exp(np.mean(losses))
     return perplexity
 
@@ -116,7 +133,7 @@ if __name__ == "__main__":
     model, tokenizer = load_model_and_tokenizer_from_hf(model_name)
     
     # Вычисление перплексии
-    perplexity = calculate_perplexity(model, tokenizer, text_data)
+    perplexity = calculate_perplexity_batched(model, tokenizer, text_data[:SAMPLE_SIZE])
     
     # Сохранение результатов
     print(f"Perplexity: {perplexity:.4f}")
