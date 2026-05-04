@@ -70,9 +70,9 @@ def load_dataset_from_hf(dataset_name, split="test", text_column="text"):
         print("Success authentification in Huggingface Hub")
 
         data_files = {
-            "train": "trainv2.txt", 
-            "test": "testv2.txt",
-            "val": "valv2.txt"
+            "train": "train.txt", 
+            "test": "test.txt",
+            "val": "val.txt"
         }
         
         dataset = load_dataset(dataset_name, data_files=data_files, token=hf_token)
@@ -108,7 +108,8 @@ def load_dataset_from_hf(dataset_name, split="test", text_column="text"):
 
 if __name__ == "__main__":
     current_dir = Path(__file__).parent
-    dataset_name = "nikrog/psychology_30_v1"
+    #dataset_name = "nikrog/psychology_30_v1"
+    dataset_name = "nikrog/psychology_dataset_rus"
     model_name = "nikrog/rugpt3small_finetuned_psychology_v2"
     # Загрузка данных и модели
     text_data = load_dataset_from_hf(dataset_name)
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     results = {
             'Model': model_name,
             'Dataset': dataset_name,
-            'File': "testv2",
+            'File': "test",
             'perplexity': float(perplexity),
             'Test samples': len(text_data),
             'timestamp': np.datetime64('now').astype(str)
