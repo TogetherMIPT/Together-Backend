@@ -133,7 +133,7 @@ if __name__ == "__main__":
     model, tokenizer = load_model_and_tokenizer_from_hf(model_name)
     
     # Вычисление перплексии
-    perplexity = calculate_perplexity_batched(model, tokenizer, text_data[:SAMPLE_SIZE])
+    perplexity = calculate_perplexity(model, tokenizer, text_data[:SAMPLE_SIZE])
     
     # Сохранение результатов
     print(f"Perplexity: {perplexity:.4f}")
@@ -145,7 +145,7 @@ if __name__ == "__main__":
             'Dataset': dataset_name,
             'File': "test",
             'perplexity': float(perplexity),
-            'Test samples': len(text_data),
+            'Test samples': len(text_data[:SAMPLE_SIZE]),
             'timestamp': np.datetime64('now').astype(str)
         }
         
