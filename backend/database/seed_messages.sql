@@ -42,7 +42,7 @@ SELECT
         'I feel overwhelmed by all my responsibilities and I can''t prioritise.'
     ])[ ((t.chat_rn * t.turn_num * 3) % 10) + 1 ],
     true,
-    t.chat_created + (t.turn_num - 1) * INTERVAL '25 minutes'
+    t.chat_created + (t.turn_num - 1) * INTERVAL '25 minutes' AS creation_datetime
 
 FROM turns t
 
