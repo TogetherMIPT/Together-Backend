@@ -1,11 +1,7 @@
 -- Seed script: traces of 32 payments via last_payment_datetime on users.
 -- In the app, last_payment_datetime is set when the free trial ends (message.go).
--- Active subscription: paid within the last 30 days.
--- Expired subscription: paid more than 30 days ago.
---
--- Distribution across the first 32 users (by user_id order):
---   users  1–22: active subscription  (paid 1–28 days ago)
---   users 23–32: expired subscription (paid 31–60 days ago)
+-- All 32 payments fall within the last 3 days → all subscriptions are active (< 30 days).
+-- Non-uniform spread: quadratic term creates irregular gaps between payments.
 
 WITH ranked AS (
     SELECT
@@ -16,12 +12,7 @@ WITH ranked AS (
 )
 UPDATE users
 SET last_payment_datetime =
-    CASE
-        WHEN r.rn <= 22
-            THEN NOW() - ((r.rn * 7)        % 28 + 1) * INTERVAL '1 day'
-        ELSE
-             NOW() - ((r.rn * 5 - 22) % 30 + 31) * INTERVAL '1 day'
-    END
+    NOW() - ((r.rn * 83 + r.rn * r.rn * 5) % (3 * 24 * 60)) * INTERVAL '1 minute'
 FROM ranked r
 WHERE users.user_id = r.user_id
   AND r.rn <= 32;

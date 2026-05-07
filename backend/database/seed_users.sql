@@ -17,5 +17,6 @@ SELECT
     (ARRAY['Moscow', 'Berlin', 'Paris', 'New York', 'London', 'Madrid', 'Rome'])[ (i % 7) + 1 ],
     CASE WHEN i % 3 = 0 THEN 'male' WHEN i % 3 = 1 THEN 'female' ELSE '' END,
     DATE '1990-01-01' + ((i * 97) % 10950) * INTERVAL '1 day',
-    NOW()
+    -- Non-uniform spread over the past 14 days: quadratic term creates natural clustering
+    NOW() - ((i * 97 + i * i * 3) % (14 * 24 * 60)) * INTERVAL '1 minute'
 FROM generate_series(1, 213) AS s(i);
