@@ -27,7 +27,9 @@ OUTPUT_DIR = "./rugpt3_finetuned"
 LORA_R = 16
 LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
-TARGET_MODULES = ["c_attn"]  # для GPT-2 архитектуры
+# для GPT-2 архитектуры
+#TARGET_MODULES = ["c_attn"] # обучение только входов Q, K, V для attention
+TARGET_MODULES = ["c_attn", "c_proj"]  # выходы тоже дообучаем, увеличивается качество, но и чило обучаемых параметров
 
 # QLoRA настройки
 USE_QLORA = True  # True для QLoRA, False для обычного LoRA
@@ -186,10 +188,10 @@ def train_model(model, tokenizer, train_dataset, eval_dataset):
     return trainer
 
 
-def save_model_to_hf(trainer, tokenizer):
+def save_model_to_hf(model, tokenizer):
     """Сохранение модели"""
     # Загрузка на Hugging Face
-    trainer.push_to_hub(
+    model.push_to_hub(
         repo_id=FINETUNED_MODEL_NAME,
         private=True,
         commit_message="Load fine-tuned model on psychology dataset",
@@ -214,9 +216,31 @@ def main():
     
     print("Начало обучения...")
     trainer = train_model(model, tokenizer, train_dataset, eval_dataset)
+
+    print("Сохранение модели в Hugging Face")
+    save_model_to_hf(trainer.model, tokenizer) # будут сохранены только адаптеры trainer.model, базовую модель сохранять не имеет смысла
     
     print("Обучение завершено!")
     print(f"Модель сохранена в: {OUTPUT_DIR}")
 
 if __name__ == "__main__":
     main()
+
+    # пример загрузки дообученных адаптеров и базовой модели
+    # from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+    # from peft import PeftModel
+
+    # # Загружаем базу + адаптер
+    # base_model = AutoModelForCausalLM.from_pretrained(
+    #     "sberbank-ai/rugpt3medium_based_on_gpt2",
+    #     device_map="auto",
+    #     torch_dtype=torch.float16
+    # )
+    
+    # model = PeftModel.from_pretrained(base_model, "nikrog/rugpt3medium_finetuned_psychology")
+    # model = model.merge_and_unload()  # Опционально: "вшивает" адаптер в веса
+    
+    # tokenizer = AutoTokenizer.from_pretrained("nikrog/rugpt3medium_finetuned_psychology")
+    
+    # pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    # print(pipe("Пациент жалуется на постоянную тревогу. Рекомендации:", max_new_tokens=100))
