@@ -158,12 +158,18 @@ def train_model(model, tokenizer, train_dataset, eval_dataset):
         per_device_eval_batch_size=4,
         gradient_accumulation_steps=4,
         learning_rate=2e-4,
-        num_train_epochs=3,
+        num_train_epochs=3, # 1 эпоха для теста скрипта
         weight_decay=0.01,
         fp16=True,
         logging_steps=10,
         save_strategy="epoch",
+        # save_strategy="steps",
+        # save_steps=500,
+        # save_total_limit=2,
+        # resume_from_checkpoint=True,
         eval_strategy="epoch",
+        # eval_strategy="steps",
+        # eval_steps=2000,
         load_best_model_at_end=True,
         report_to="none",
         gradient_checkpointing=True if USE_QLORA else False,
@@ -212,7 +218,7 @@ def main():
     model = configure_lora(model)
     
     print("Загрузка и предобработка датасета...")
-    train_dataset, eval_dataset, test_dataset = load_and_preprocess_dataset(tokenizer)
+    train_dataset, eval_dataset, test_dataset = load_and_preprocess_dataset(tokenizer) # можно установить max_length=256 для более бымтрого выполнения
     
     print("Начало обучения...")
     trainer = train_model(model, tokenizer, train_dataset, eval_dataset)
