@@ -90,7 +90,7 @@ def configure_lora(model):
 def load_and_preprocess_dataset(tokenizer, max_length=512):
     """Загрузка и предобработка датасета"""
 
-    hf_token = "MY_TOKEN"
+    hf_token = os.getenv("HF_TOKEN")
 
     login(token=hf_token)
     print("Success authentification in Huggingface Hub")
@@ -169,7 +169,7 @@ def train_model(model, tokenizer, train_dataset, eval_dataset):
         # resume_from_checkpoint=True,
         eval_strategy="epoch",
         # eval_strategy="steps",
-        # eval_steps=2000,
+        # eval_steps=500,
         load_best_model_at_end=True,
         report_to="none",
         gradient_checkpointing=True if USE_QLORA else False,
